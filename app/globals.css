@@ -1,0 +1,212 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Requis — modern SaaS clinical/regulatory workspace.
+ * Paper, ink, and a single green accent with a warm moment per screen.
+ *
+ * Badge fills are darkened derivations of the status hues so white text on
+ * the stamp meets WCAG AA; the raw status hues are reserved for non-text
+ * markers (timeline steps, dots, ledger ticks).
+ */
+
+:root {
+  --font-plex-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  --paper: #f4f6f5;
+  --paper-raised: #ffffff;
+  --ink: #16302e;
+  --accent: #2e6f6a;
+  --accent-strong: #245b57;
+  --accent-muted: #dfeae7;
+  --accent-soft: #eef4f1;
+  --accent-warm: #c97a3d;
+  --accent-warm-strong: #a86030;
+  --hairline: #dce2de;
+  --muted-text: #5e6e6b;
+
+  --status-pending: #b8860b;
+  --status-in-review: #3a6ea5;
+  --status-reported: #3f8361;
+  --status-rejected: #b44b3e;
+
+  --status-pending-fill: #7a5c08;
+  --status-in-review-fill: #2d5a83;
+  --status-reported-fill: #245c42;
+  --status-rejected-fill: #9c3c30;
+
+  --overlay: rgba(22, 48, 46, 0.45);
+}
+
+@layer base {
+  * {
+    @apply border-hairline;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+    font-family: var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system,
+      sans-serif;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    background-image: radial-gradient(
+        1000px 420px at 92% -8%,
+        rgba(46, 111, 106, 0.07),
+        transparent 60%
+      ),
+      radial-gradient(
+        760px 380px at -12% 110%,
+        rgba(201, 122, 61, 0.05),
+        transparent 55%
+      );
+  }
+
+  ::selection {
+    background: var(--accent);
+    color: var(--paper-raised);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Raised card: the shared modern surface for data panels and stats. */
+  .card {
+    @apply rounded-card border border-hairline bg-paper-raised shadow-soft;
+    border-color: color-mix(in oklab, var(--hairline) 78%, transparent);
+  }
+
+  /* Ruled table: hairline interior rules inside a soft panel. */
+  .ruled-table {
+    @apply w-full border-collapse text-left;
+    font-size: 0.8125rem;
+  }
+  .ruled-table tbody tr {
+    @apply border-t border-hairline transition-colors;
+  }
+  .ruled-table tbody tr:hover {
+    background: var(--accent-soft);
+  }
+  .ruled-table th {
+    @apply border-b border-hairline;
+    color: var(--muted-text);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.625rem 0.875rem;
+    white-space: nowrap;
+    text-transform: none;
+  }
+  .ruled-table td {
+    @apply align-middle px-3.5 py-3;
+    white-space: nowrap;
+  }
+
+  /* Stamped status badge: solid pill, minimal shadow, AA-contrast fill. */
+  .stamp {
+    @apply inline-flex items-center gap-1 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide;
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+      0 1px 2px rgba(22, 48, 46, 0.18);
+  }
+  .stamp-pending {
+    background: var(--status-pending-fill);
+  }
+  .stamp-in_review {
+    background: var(--status-in-review-fill);
+  }
+  .stamp-reported {
+    background: var(--status-reported-fill);
+  }
+  .stamp-rejected {
+    background: var(--status-rejected-fill);
+  }
+
+  /* Signature warm rule under a page heading. */
+  .signature-rule {
+    @apply mt-2 mb-0 h-[3px] w-12 rounded-pill;
+    background: linear-gradient(
+      90deg,
+      var(--accent-warm),
+      rgba(201, 122, 61, 0.12)
+    );
+  }
+  .signature-rule-muted {
+    background: var(--hairline);
+  }
+
+  /* Requisition label/value grid item. */
+  .req-field-label {
+    @apply block font-mono text-[10px] uppercase tracking-[0.08em];
+    color: var(--muted-text);
+  }
+
+  /* Stat figure: semibold UI numeral with tight tracking. */
+  .stat-figure {
+    font-family: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+  }
+
+  /* Recessed well for secondary/contextual surfaces. */
+  .well {
+    background: var(--accent-soft);
+    border: 1px solid var(--hairline);
+  }
+
+  /* Raw-data disclosure */
+  .raw-json {
+    @apply overflow-x-auto font-mono text-xs leading-relaxed;
+    color: var(--ink);
+    background: #ecefee;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Sidebar / navigation item: soft rounded row. */
+  .nav-item {
+    @apply flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13px] transition-all;
+    color: var(--muted-text);
+  }
+  .nav-item:hover {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+  .nav-item[data-active="true"] {
+    background: var(--accent-muted);
+    color: var(--accent-strong);
+    font-weight: 500;
+    box-shadow: inset 3px 0 0 0 var(--accent);
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
