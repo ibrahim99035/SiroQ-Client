@@ -1,0 +1,27 @@
+# SiroQ Client — standalone application-management stack.
+#
+# Deliberately independent from the SiroQ Analysis Service stack (which runs its
+# own Postgres on :5433). This one keeps its own volume and its own port so the
+# two services can be started, reset, and deployed separately.
+services:
+  db:
+    image: postgres:16
+    container_name: siroq_client_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: siroq_client
+      POSTGRES_PASSWORD: siroq_client_dev_password
+      POSTGRES_DB: siroq_client
+    ports:
+      - "5434:5432"
+    volumes:
+      - siroq_client_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siroq_client -d siroq_client"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  siroq_client_pg_data:
+    name: siroq_client_pg_data

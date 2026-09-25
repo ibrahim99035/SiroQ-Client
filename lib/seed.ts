@@ -592,6 +592,7 @@ const APPS: AppSeed[] = [
 export const seedReports: Report[] = APPS.filter((a) => a.status === "reported").map((a) => ({
   id: `RPT-${a.id}`,
   applicationId: a.id,
+  status: "final",
   resultData: a.reportData ?? {},
   generatedBy: a.reportedBy ?? "u-sa-1",
   generatedAt: a.reportedAt ?? a.submittedAt,

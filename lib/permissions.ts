@@ -65,6 +65,14 @@ export function can(
             resource.pharmacyId === null ||
             resource.pharmacyAssociationId === user.associationId
           );
+        case "createApplication":
+          // Association admins may file for any pharmacy inside their own
+          // association. The data layer re-checks against the resolved
+          // pharmacy, so a resource without `pharmacyAssociationId` is allowed
+          // through here and blocked there.
+          return resource?.pharmacyAssociationId === undefined
+            ? true
+            : resource.pharmacyAssociationId === user.associationId;
         case "manageUsers":
           return resource
             ? resource.associationId === user.associationId

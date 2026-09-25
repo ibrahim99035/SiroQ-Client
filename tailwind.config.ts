@@ -33,7 +33,7 @@ const config: Config = {
         danger: "var(--status-rejected)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", ...defaultTheme.fontFamily.sans],
+        sans: ["var(--font-plex-sans)", ...defaultTheme.fontFamily.sans],
         mono: [
           "var(--font-plex-mono)",
           "IBM Plex Mono",

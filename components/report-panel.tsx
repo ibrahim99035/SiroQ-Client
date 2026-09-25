@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { fmtDateTime } from "@/lib/utils";
-import type { Report } from "@/lib/types";
+import { REPORT_STATUS_LABELS, type Report, type ReportValue } from "@/lib/types";
 
 /**
  * Report panel. Renders `report.resultData` generically as a two-column
@@ -20,9 +20,17 @@ export function ReportPanel({ report }: { report: Report }) {
   return (
     <section className="card overflow-hidden" aria-label="Report">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline px-5 py-3">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">Report</p>
-          <p className="font-mono text-sm text-ink">{report.id}</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">Report</p>
+            <p className="font-mono text-sm text-ink">{report.id}</p>
+          </div>
+          <span
+            className="stamp bg-[var(--accent-strong)]"
+            aria-label={`Report status: ${REPORT_STATUS_LABELS[report.status]}`}
+          >
+            {REPORT_STATUS_LABELS[report.status]}
+          </span>
         </div>
         <div className="text-right">
           <p className="font-mono text-[11px] text-muted">Generated {fmtDateTime(report.generatedAt)}</p>
@@ -39,7 +47,9 @@ export function ReportPanel({ report }: { report: Report }) {
           {entries.map(([label, value]) => (
             <div key={label} className="flex items-baseline justify-between gap-4 px-5 py-2.5">
               <dt className="text-[13px] text-muted">{label}</dt>
-              <dd className="text-right font-mono text-[13px] tabular-nums text-ink">{value}</dd>
+              <dd className="text-right font-mono text-[13px] tabular-nums text-ink">
+                {formatReportValue(value)}
+              </dd>
             </div>
           ))}
         </dl>
@@ -67,4 +77,14 @@ export function ReportPanel({ report }: { report: Report }) {
       </div>
     </section>
   );
+}
+
+/**
+ * `resultData` is freeform JSON from the reference service, so values are
+ * formatted for display rather than assumed to be strings.
+ */
+function formatReportValue(value: ReportValue): string {
+  if (value === null) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
 }

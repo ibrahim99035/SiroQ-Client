@@ -1,0 +1,413 @@
+// SiroQ Client — system of record for the multi-tenant pharmacy application
+// review workspace.
+//
+// SCOPE BOUNDARY
+// This schema is the *application management* domain: tenants (associations),
+// pharmacies, users/roles, filings (applications), the files inside them, and
+// the reports attached to them.
+//
+// The separate "SiroQ Analysis Service" (Python/FastAPI) owns its own database
+// where it performs column profiling, data-quality scoring, canonical-field
+// classification and forecasting. It also has a table named `applications` with
+// a completely different meaning. We therefore link to it explicitly through
+// AnalysisRun/`Application.analysisApplicationId` and never by name.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- enums ----
+
+enum Role {
+  super_admin
+  moderator
+  pharmacy_association_admin
+  pharmacy_worker
+}
+
+enum UserStatus {
+  active
+  invited
+  disabled
+}
+
+enum EntityStatus {
+  active
+  suspended
+}
+
+enum ApplicationStatus {
+  pending
+  in_review
+  reported
+  rejected
+}
+
+enum FileKind {
+  xlsx
+  csv
+}
+
+enum FileValidationState {
+  valid
+  warning
+  invalid
+}
+
+/// Where a file is in the intake/parse pipeline.
+enum ParseState {
+  pending
+  parsing
+  parsed
+  failed
+}
+
+/// State of a pending direct-to-storage upload slot.
+enum UploadState {
+  pending
+  ready
+  failed
+  expired
+}
+
+enum ReportStatus {
+  draft
+  final
+}
+
+/// Who produced the report. `manual` = attached by a super admin;
+/// `service` = produced by the SiroQ Analysis Service.
+enum ReportSource {
+  manual
+  service
+}
+
+/// Outcome of a call out to the analysis service.
+enum AnalysisRunStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
+// --------------------------------------------------------------- tenants ----
+
+/// Top-level tenant. An association admin is scoped to exactly one of these.
+model PharmacyAssociation {
+  id               String       @id @default(uuid()) @db.Uuid
+  name             String
+  region           String
+  gmpCertificateId String       @map("gmp_certificate_id")
+  status           EntityStatus @default(active)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pharmacies   Pharmacy[]
+  users        User[]
+  applications Application[]
+
+  @@index([status])
+  @@map("pharmacy_associations")
+}
+
+/// A licensed dispensing site. A pharmacy worker is scoped to exactly one.
+model Pharmacy {
+  id            String       @id @default(uuid()) @db.Uuid
+  associationId String       @map("association_id") @db.Uuid
+  name          String
+  address       String
+  licenseNumber String       @map("license_number")
+  status        EntityStatus @default(active)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  association  PharmacyAssociation @relation(fields: [associationId], references: [id], onDelete: Cascade)
+  users        User[]
+  applications Application[]
+
+  @@index([associationId])
+  @@index([status])
+  @@map("pharmacies")
+}
+
+// ------------------------------------------------------------------ users ---
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  email String @unique
+  name  String
+
+  /// NULL until the invite is accepted / password is set.
+  passwordHash String? @map("password_hash")
+
+  role   Role
+  status UserStatus @default(invited)
+
+  /// Set for `pharmacy_association_admin` (and super admin acting in tenant).
+  associationId String? @map("association_id") @db.Uuid
+  /// Set for `pharmacy_worker`.
+  pharmacyId String? @map("pharmacy_id") @db.Uuid
+
+  inviteTokenHash String?   @unique @map("invite_token_hash")
+  inviteExpiresAt DateTime? @map("invite_expires_at") @db.Timestamptz(6)
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz(6)
+  disabledAt      DateTime? @map("disabled_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  association PharmacyAssociation? @relation(fields: [associationId], references: [id], onDelete: SetNull)
+  pharmacy    Pharmacy?            @relation(fields: [pharmacyId], references: [id], onDelete: SetNull)
+
+  sessions        Session[]
+  passwordResets  PasswordResetToken[]
+  submittedFiles  ApplicationFile[]     @relation("FileUploader")
+  submittedApps   Application[]        @relation("AppSubmitter")
+  statusEvents    StatusEvent[]
+  reports         Report[]
+  uploads         Upload[]             @relation("UploadOwner")
+  analysisRuns    AnalysisRun[]
+  invitedBy       User?                @relation("UserInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  invitedById     String?              @map("invited_by_id") @db.Uuid
+  invitedUsers    User[]               @relation("UserInviter")
+
+  @@index([role])
+  @@index([status])
+  @@index([associationId])
+  @@index([pharmacyId])
+  @@map("users")
+}
+
+/// Server-side session. The cookie carries only an opaque token; the token's
+/// SHA-256 is what we store, so a database read cannot be replayed as a login.
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ----------------------------------------------------------- applications ---
+
+/// A filing: one pharmacy submitting one or more dispensing-data files for
+/// review. Progresses pending -> in_review -> reported (or rejected) and keeps
+/// a full audit trail.
+model Application {
+  id    String @id @default(uuid()) @db.Uuid
+  title String
+
+  /// Human-readable filing reference shown throughout the UI (e.g. AP-2026-2601).
+  /// Kept separate from the UUID primary key so database identity never leaks
+  /// into the interface.
+  reference String @unique
+
+  pharmacyId String @map("pharmacy_id") @db.Uuid
+  /// Denormalised from the pharmacy so tenant scoping needs no join.
+  associationId String @map("association_id") @db.Uuid
+  submittedById String @map("submitted_by_id") @db.Uuid
+
+  status      ApplicationStatus @default(pending)
+  submittedAt DateTime          @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  /// Link to the SiroQ Analysis Service's own application record. Null until
+  /// the filing is first sent there. Never join across databases by name.
+  analysisApplicationId String? @map("analysis_application_id")
+  analysisName          String? @map("analysis_name")
+
+  pharmacy    Pharmacy            @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+  association PharmacyAssociation @relation(fields: [associationId], references: [id], onDelete: Cascade)
+  submittedBy User                @relation("AppSubmitter", fields: [submittedById], references: [id])
+
+  files        ApplicationFile[]
+  events       StatusEvent[]
+  report       Report?
+  uploads      Upload[]
+  analysisRuns AnalysisRun[]
+
+  @@index([pharmacyId])
+  @@index([associationId])
+  @@index([status])
+  @@index([submittedAt])
+  @@map("applications")
+}
+
+/// An uploaded .xlsx/.csv. Validation and parse metadata are computed
+/// server-side from the file's actual bytes — never supplied by the client.
+model ApplicationFile {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+
+  originalName   String @map("original_name")
+  kind           FileKind
+  mimeType       String @map("mime_type")
+  sizeBytes      BigInt @map("size_bytes")
+  checksumSha256 String @map("checksum_sha256")
+  storageKey     String @map("storage_key")
+  storageDriver  String @map("storage_driver")
+
+  /// Server-computed parse results.
+  parseState      ParseState @default(pending) @map("parse_state")
+  parseError      String?    @map("parse_error")
+  rowCount        Int        @default(0) @map("row_count")
+  columnCount     Int        @default(0) @map("column_count")
+  detectedColumns String[]   @default([]) @map("detected_columns")
+  sheetNames      String[]   @default([]) @map("sheet_names")
+
+  validationState  FileValidationState @map("validation_state")
+  validationReason String              @map("validation_reason")
+
+  uploadedById String   @map("uploaded_by_id") @db.Uuid
+  uploadedAt   DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  uploadedBy  User        @relation("FileUploader", fields: [uploadedById], references: [id])
+
+  @@index([applicationId])
+  @@map("application_files")
+}
+
+/// A reserved direct-to-storage upload slot. The browser PUTs bytes straight to
+/// object storage with a presigned URL, then confirms here; only `ready` rows
+/// may be attached to a filing.
+model Upload {
+  id    String      @id @default(uuid()) @db.Uuid
+  state UploadState @default(pending)
+
+  originalName  String @map("original_name")
+  kind          FileKind
+  mimeType      String @map("mime_type")
+  declaredBytes BigInt @map("declared_bytes")
+  storageKey    String @unique @map("storage_key")
+  storageDriver String @map("storage_driver")
+
+  /// Filled in when the object is verified present, from the storage backend.
+  actualBytes    BigInt?  @map("actual_bytes")
+  checksumSha256 String?  @map("checksum_sha256")
+  failureReason  String?  @map("failure_reason")
+
+  uploadedById  String  @map("uploaded_by_id") @db.Uuid
+  applicationId String? @map("application_id") @db.Uuid
+
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  uploadedBy  User         @relation("UploadOwner", fields: [uploadedById], references: [id])
+
+  @@index([state])
+  @@index([uploadedById])
+  @@index([expiresAt])
+  @@map("uploads")
+}
+
+// -------------------------------------------------------- audit & reports ---
+
+/// Append-only audit trail: who moved a filing to which status, and when.
+model StatusEvent {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+
+  to         ApplicationStatus
+  fromStatus ApplicationStatus? @map("from_status")
+  changedById String             @map("changed_by_id") @db.Uuid
+  note        String?
+  changedAt   DateTime           @default(now()) @map("changed_at") @db.Timestamptz(6)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  changedBy   User        @relation(fields: [changedById], references: [id])
+
+  @@index([applicationId, changedAt])
+  @@map("application_status_events")
+}
+
+/// The review result attached to a filing.
+///
+/// `resultData` stays schemaless on purpose: the report document is owned by
+/// whichever produced it (a super admin today, the SiroQ Analysis Service
+/// later), so the UI renders whatever keys arrive. `rawData` keeps the
+/// untouched document for audit and debugging.
+model Report {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @unique @map("application_id") @db.Uuid
+
+  status ReportStatus @default(final)
+  source ReportSource @default(manual)
+
+  /// Normalised label/value pairs for the report panel.
+  resultData Json   @default("{}") @map("result_data")
+  /// Untouched upstream document, pretty-printed for the raw-data toggle.
+  rawData    String @default("{}") @map("raw_data")
+
+  generatedById String   @map("generated_by_id") @db.Uuid
+  generatedAt   DateTime @default(now()) @map("generated_at") @db.Timestamptz(6)
+
+  /// Provenance when `source = service`.
+  engineVersion String? @map("engine_version")
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  generatedBy User        @relation(fields: [generatedById], references: [id])
+
+  @@map("reports")
+}
+
+/// One invocation of the SiroQ Analysis Service for a filing. Recorded so the
+/// integration stays observable, auditable and retryable when that service is
+/// down or its contract changes.
+model AnalysisRun {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+
+  status AnalysisRunStatus @default(queued)
+
+  /// Identifiers returned by the analysis service.
+  analysisApplicationId String? @map("analysis_application_id")
+  analysisId            String? @map("analysis_id")
+  engineVersion         String? @map("engine_version")
+
+  requestPayload  Json?   @map("request_payload")
+  responseSummary Json?   @map("response_summary")
+  errorMessage    String? @map("error_message")
+
+  startedAt     DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(6)
+  requestedById String    @map("requested_by_id") @db.Uuid
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  requestedBy User        @relation(fields: [requestedById], references: [id])
+
+  @@index([applicationId, startedAt])
+  @@index([status])
+  @@map("analysis_runs")
+}
+

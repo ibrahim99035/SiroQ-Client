@@ -9,9 +9,6 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { findUserByEmail } from "@/lib/data";
-import { useAppStore } from "@/lib/store";
-import { ROLE_LABELS } from "@/lib/types";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -21,40 +18,49 @@ type FormValues = z.infer<typeof schema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const users = useAppStore((s) => s.users);
-  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
   const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: "", password: "" },
   });
 
-  const signInAs = (userId: string) => {
-    setCurrentUser(userId);
-    router.push("/dashboard");
-  };
+  const onSubmit = async (values: FormValues) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
 
-  const onSubmit = (values: FormValues) => {
-    const user = findUserByEmail(values.email);
-    if (!user) {
-      setError(
-        "No account exists for that email on this preview. Pick a demo identity below, or create an account.",
-      );
-      return;
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(
+          body?.error?.message ??
+            "Sign-in did not complete. Check your connection and try again.",
+        );
+        return;
+      }
+
+      // The session cookie is set by the server; refresh so the shell picks it up.
+      router.replace("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    if (user.status !== "active") {
-      setError("That identity is not active on this preview. Choose another demo identity.");
-      return;
-    }
-    signInAs(user.id);
   };
 
   return (
     <div className="card px-6 py-8">
       <h1 className="text-2xl font-semibold tracking-tight text-ink">Sign in</h1>
       <p className="mt-2 text-sm text-muted">
-        Demo mode accepts any password. Use one of the seeded identities from the list, or your
-        own email if an account exists.
+        Sign in with your work email. Access is scoped to your role and organisation.
       </p>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="mt-6 space-y-4">
@@ -77,8 +83,8 @@ export default function LoginPage() {
             {error}
           </p>
         ) : null}
-        <Button type="submit" className="w-full" size="lg">
-          Sign in
+        <Button type="submit" className="w-full" size="lg" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
 
@@ -87,32 +93,6 @@ export default function LoginPage() {
           Forgot your password?
         </Link>
       </div>
-
-      <section className="mt-8 border-t border-hairline pt-5" aria-label="Demo identities">
-        <h2 className="text-sm font-medium text-ink">Quick demo access</h2>
-        <p className="mt-1 text-[13px] text-muted">
-          Sign in as one of the seeded identities to preview scoped views.
-        </p>
-        <ul className="mt-3 divide-y divide-hairline overflow-hidden rounded-card border border-hairline/70 bg-paper-raised shadow-soft">
-          {users
-            .filter((u) => u.status === "active")
-            .slice(0, 6)
-            .map((u) => (
-              <li key={u.id}>
-                <button
-                  type="button"
-                  onClick={() => signInAs(u.id)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-accent-soft focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-                >
-                  <span>
-                    <span className="block text-[13px] font-medium text-ink">{u.name}</span>
-                    <span className="block font-mono text-[11px] text-muted">{ROLE_LABELS[u.role]}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-        </ul>
-      </section>
 
       <p className="mt-6 text-[13px] text-muted">
         New to Requis?{" "}

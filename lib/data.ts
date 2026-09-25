@@ -15,6 +15,7 @@ import type {
   Pharmacy,
   PharmacyAssociation,
   Report,
+  ReportResultData,
   User,
 } from "./types";
 
@@ -399,6 +400,16 @@ export function createApplication(input: CreateApplicationInput, user: User): Ap
   const pharmacy = state.pharmacies.find((p) => p.id === input.pharmacyId);
   if (!pharmacy) {
     throw new DataError("not_found", `Pharmacy "${input.pharmacyId}" does not exist in the dataset.`);
+  }
+  if (
+    user.role === "pharmacy_association_admin" &&
+    pharmacy.associationId !== user.associationId
+  ) {
+    throw new PermissionError(
+      `${user.name} can only submit filings for pharmacies in their own association.`,
+      user,
+      "createApplication",
+    );
   }
   if (user.role === "pharmacy_worker" && pharmacy.id !== user.pharmacyId) {
     throw new PermissionError(
@@ -819,12 +830,12 @@ function synthesizeReport(application: Application, user: User): Report {
   const grade =
     invalidFiles.length > 0 ? "Non-compliant" : warnFiles.length > 0 ? "Compliant — with caveats" : "Compliant";
 
-  const resultData: Record<string, string> = {
+  const resultData: ReportResultData = {
     "Layout grade": grade,
-    "Records examined": records.toLocaleString("en-US"),
+    "Records examined": records,
     "Data quality score": `${quality.toFixed(1)}%`,
-    "Critical deviations": String(critical),
-    "Late-dispense flags": String(lateFlags),
+    "Critical deviations": critical,
+    "Late-dispense flags": lateFlags,
     "Batch coverage": `${batchCoverage.toFixed(1)}%`,
     "Schema version": "RxFill 2.5",
   };
@@ -832,6 +843,7 @@ function synthesizeReport(application: Application, user: User): Report {
   return {
     id: `RPT-${application.id}`,
     applicationId: application.id,
+    status: "final",
     resultData,
     generatedBy: user.id,
     generatedAt: nowIso(),

@@ -24,7 +24,7 @@
   --accent-soft: #eef4f1;
   --accent-warm: #c97a3d;
   --accent-warm-strong: #a86030;
-  --hairline: #dce2de;
+  --hairline: #D8DDDA;
   --muted-text: #5e6e6b;
 
   --status-pending: #b8860b;
@@ -51,8 +51,8 @@
 
   body {
     @apply bg-paper font-sans text-ink antialiased;
-    font-family: var(--font-inter), "Inter", ui-sans-serif, system-ui, -apple-system,
-      sans-serif;
+    font-family: var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui,
+      -apple-system, sans-serif;
     font-size: 0.875rem;
     line-height: 1.5;
     background-image: radial-gradient(
@@ -162,7 +162,7 @@
 
   /* Stat figure: semibold UI numeral with tight tracking. */
   .stat-figure {
-    font-family: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     font-size: 1.75rem;
     font-weight: 700;

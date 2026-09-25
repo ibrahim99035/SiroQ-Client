@@ -9,6 +9,7 @@ export type EntityStatus = "active" | "suspended";
 export type ApplicationStatus = "pending" | "in_review" | "reported" | "rejected";
 export type FileKind = "xlsx" | "csv";
 export type FileValidationState = "valid" | "warning" | "invalid";
+export type ReportStatus = "draft" | "final";
 
 export interface PharmacyAssociation {
   id: string;
@@ -60,10 +61,19 @@ export interface StatusEvent {
   note?: string;
 }
 
+/**
+ * Report result payload. Deliberately freeform JSON: `result_data` is attached
+ * manually today and will later be populated by the reference service, so the
+ * UI renders whatever keys arrive rather than a fixed field list.
+ */
+export type ReportValue = string | number | boolean | null;
+export type ReportResultData = Record<string, ReportValue>;
+
 export interface Report {
   id: string;
   applicationId: string;
-  resultData: Record<string, string>;
+  status: ReportStatus;
+  resultData: ReportResultData;
   generatedBy: string;
   generatedAt: string;
   rawData: string;
@@ -95,4 +105,9 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   in_review: "In review",
   reported: "Reported",
   rejected: "Rejected",
+};
+
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  draft: "Draft",
+  final: "Final",
 };

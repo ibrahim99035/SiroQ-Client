@@ -24,7 +24,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </p>
         </div>
         <p className="relative z-10 font-mono text-[11px] text-paper-raised/60">
-          mock data layer · no signups stored
+          secure access · sessions expire and can be revoked
         </p>
       </div>
       <div className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">

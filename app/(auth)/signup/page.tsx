@@ -8,7 +8,6 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createAccount } from "@/lib/data";
 
 const schema = z
   .object({
@@ -26,18 +25,35 @@ type FormValues = z.infer<typeof schema>;
 export default function SignupPage() {
   const [createdEmail, setCreatedEmail] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: "", email: "", password: "", confirm: "" },
   });
 
-  const onSubmit = (values: FormValues) => {
+  const onSubmit = async (values: FormValues) => {
+    setBusy(true);
     setError(null);
     try {
-      createAccount({ name: values.name, email: values.email });
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: values.name, email: values.email, password: values.password }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(body?.error?.message ?? "The account could not be created. Please try again.");
+        return;
+      }
+
       setCreatedEmail(values.email);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The account could not be created.");
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -45,10 +61,11 @@ export default function SignupPage() {
     return (
       <div className="card p-8">
         <h1 className="text-xl font-semibold tracking-tight text-ink">Account created</h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted">
-          A pharmacy worker account for <span className="font-mono text-[12px] text-ink">{createdEmail}</span>{" "}
-          is registered in this session. No pharmacy is assigned yet, so the dashboard will read as
-          empty until an association admin assigns you one.
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          An account has been created for{" "}
+          <span className="font-mono text-[12px] text-ink">{createdEmail}</span>. It starts as a
+          pharmacy worker with no pharmacy assigned, so the dashboard stays empty until an
+          association administrator assigns you one.
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button asChild>
@@ -104,8 +121,8 @@ export default function SignupPage() {
             {error}
           </p>
         ) : null}
-        <Button type="submit" className="w-full" size="lg">
-          Create account
+        <Button type="submit" className="w-full" size="lg" disabled={busy}>
+          {busy ? "Creating account…" : "Create account"}
         </Button>
       </form>
 
