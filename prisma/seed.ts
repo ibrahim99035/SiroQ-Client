@@ -25,7 +25,7 @@ import {
   seedReports,
   seedUsers,
 } from "../lib/seed";
-import type { ApplicationStatus, FileKind, FileValidationState } from "../lib/types";
+import type { ApplicationStatus, FileKind } from "../lib/types";
 
 const DEV_PASSWORD = process.env.SEED_PASSWORD ?? "siroq-dev-password";
 const SALT_ROUNDS = 12;

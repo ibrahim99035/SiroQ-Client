@@ -6,9 +6,15 @@ import type { NextRequest } from "next/server";
  *
  * This is a UX shortcut only — it keeps signed-out visitors off the workspace
  * and off the server-rendered shell. It is deliberately NOT an authorization
- * boundary: it cannot see a role, and a cookie can be replayed. Every API route
- * re-checks the session and the caller's scope in `lib/auth.ts` /
- * `lib/scopes.ts`.
+ * boundary: it runs on the Edge runtime, so it cannot reach the database to
+ * verify a session, and it cannot see a role. A cookie can also be replayed,
+ * so presence here means nothing about identity.
+ *
+ * Every API route re-checks the session and the caller's scope via
+ * `lib/auth.ts` and `lib/permissions.ts`. Pages under `app/(app)/` are still
+ * client components and do **not** yet resolve the caller server-side — that is
+ * tracked in `docs/PLAN.md` (Phase 2) and is the reason nothing sensitive may
+ * be rendered from those pages.
  *
  * Public routes are handled by the proxy matcher instead of a prefix list, so a
  * new authenticated route is protected by default rather than by remembering
@@ -31,6 +37,9 @@ const PUBLIC_PATHS = [
   "/signup",
   "/forgot-password",
   "/reset-password",
+  // Invitation links are single-use tokens, not sessions, so they must be
+  // reachable without a cookie — that is the whole point of sending one.
+  "/invite",
 ];
 
 function isPublicRoute(pathname: string): boolean {

@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { apiError, withErrorHandling } from "@/lib/api";
 import { prisma } from "@/lib/db";
+import { absoluteUrl, sendPasswordReset } from "@/lib/mail";
 
 const forgotSchema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -59,13 +60,13 @@ export const POST = withErrorHandling(async (request: Request) => {
     },
   });
 
-  // Delivery is wired in Phase 8.3 (nodemailer + Gmail SMTP). Until then the
-  // token is logged in development only, so the flow stays testable.
-  if (process.env.NODE_ENV !== "production") {
-    console.info(
-      `[auth] password reset for ${email}: /reset-password?token=${token} (dev only — wire SMTP in Phase 8.3)`,
-    );
-  }
+  // Delivery failures are swallowed: the response below is identical either
+  // way, so a broken SMTP host cannot become an enumeration oracle.
+  await sendPasswordReset({
+    to: user.email,
+    name: user.name,
+    resetUrl: absoluteUrl(`/reset-password?token=${token}`, request),
+  });
 
   return generic;
 });

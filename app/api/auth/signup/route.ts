@@ -5,8 +5,6 @@ import { z } from "zod";
 
 import { apiError, withErrorHandling } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { hashPassword } from "@/lib/password";
-import { createSession } from "@/lib/session";
 
 const signupSchema = z.object({
   name: z.string().trim().min(2, "Enter your full name.").max(120),
@@ -21,15 +19,19 @@ const signupSchema = z.object({
 /**
  * POST /api/auth/signup
  *
- * Public self-service signup. The account is created as a **pharmacy worker**
- * with no association and no pharmacy: it can sign in immediately, but sees an
- * empty workspace until an administrator assigns it to a tenant. That is
- * deliberate — a self-registered user must never be able to place itself inside
- * somebody else's association.
+ * Public self-service signup, which creates a **pending** request rather than a
+ * usable account.
  *
- * Status is `active` rather than `invited` because the person supplied their own
- * password here. `invited` is reserved for accounts an administrator created,
- * which have no usable password until the invite is accepted.
+ * The workspace is invite-only: an account is created `invited` with a NULL
+ * `passwordHash` and no tenant, and `can()` denies every non-`active` user, so
+ * the row can do nothing at all until an administrator sends an invitation that
+ * attaches it to a pharmacy or association. That is what stops a self-registered
+ * address from placing itself inside somebody else's tenant.
+ *
+ * The password from this form is deliberately discarded. It is kept only in the
+ * request body long enough to reject a too-weak one, which spares the applicant
+ * a second round trip without ever storing a credential for an account that
+ * cannot sign in.
  */
 export const POST = withErrorHandling(async (request: Request) => {
   const parsed = signupSchema.safeParse(await request.json().catch(() => null));
@@ -43,24 +45,24 @@ export const POST = withErrorHandling(async (request: Request) => {
     return apiError("conflict", "An account with that email already exists.", 409);
   }
 
-  const passwordHash = await hashPassword(parsed.data.password);
-
   const user = await prisma.user.create({
     data: {
       name: parsed.data.name,
       email,
-      passwordHash,
       role: "pharmacy_worker",
-      status: "active",
+      status: "invited",
+      passwordHash: null,
     },
-    select: { id: true, name: true, email: true, role: true },
+    select: { id: true, name: true, email: true, role: true, status: true },
   });
 
-  // Sign the new account in so signup lands on a usable (if empty) workspace.
-  await createSession(user.id, {
-    userAgent: request.headers.get("user-agent"),
-    ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-  });
-
-  return NextResponse.json({ ok: true, user }, { status: 201 });
+  return NextResponse.json(
+    {
+      ok: true,
+      user,
+      message:
+        "Your request is with an administrator. Once an administrator attaches you to a pharmacy, you will receive an invitation to set a password.",
+    },
+    { status: 201 },
+  );
 });

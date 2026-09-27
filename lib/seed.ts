@@ -260,8 +260,6 @@ const OK = "All rows passed schema checks against the registered filing manifest
 const WARN_LOT = "614 rows carry a missing Batch number value; schema-level completeness at risk.";
 const WARN_DATE = "Date format inconsistent at row 218; normalized on intake.";
 const BAD_DATE = "Dispense date out of range (year 2023) at row 441; outside reporting window.";
-const BAD_COL =
-  "Required column \"NDC code\" is absent from the header row; file does not match the filing manifest.";
 
 const FILE_SPECS: FileSpec[] = [
   // Twin Harbors · Alder Street

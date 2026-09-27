@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { AuthError } from "@/lib/auth";
+import { PermissionError } from "@/lib/permissions";
 
 /** Normalised error body returned by every API route. */
 export interface ApiErrorBody {
@@ -29,11 +30,14 @@ export function handleApiError(error: unknown): NextResponse<ApiErrorBody> {
       error.status,
     );
   }
+  if (error instanceof PermissionError) {
+    return apiError("forbidden", error.message, 403);
+  }
   console.error("[api] unhandled error:", error);
   return apiError("server_error", "Something went wrong on our side. Please try again.", 500);
 }
 
-/** Wraps a route handler so thrown AuthErrors become proper status codes. */
+/** Wraps a route handler so thrown AuthErrors/PermissionErrors become proper status codes. */
 export function withErrorHandling<Args extends unknown[]>(
   handler: (...args: Args) => Promise<NextResponse>,
 ): (...args: Args) => Promise<NextResponse> {
