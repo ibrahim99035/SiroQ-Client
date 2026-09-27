@@ -12,7 +12,7 @@ import {
 } from "@/components/data-states";
 import { PageHeading } from "@/components/page-heading";
 import { StatModule, StatStrip } from "@/components/stat-module";
-import { PermissionGate, VisibleWhen } from "@/components/permission-gate";
+import { VisibleWhen } from "@/components/permission-gate";
 import { Button } from "@/components/ui/button";
 import { useResource } from "@/components/use-resource";
 import {
@@ -46,7 +46,6 @@ export default function DashboardPage() {
 
   const scope = dataScope(user);
   const mutating = stats.state === "loading" || rows.state === "loading" || pharmacies.state === "loading";
-  const failed = stats.error ?? rows.error ?? pharmacies.error;
 
   return (
     <div>

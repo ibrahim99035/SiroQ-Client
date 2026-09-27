@@ -70,7 +70,12 @@ export function FileDropzone({
   };
 
   const stagedRef = React.useRef<StagedFile[]>([]);
-  stagedRef.current = staged;
+  // Mirrored in an effect rather than during render: the simulated progress
+  // timers below read the latest staged list from this ref, but mutating a ref
+  // while rendering is not allowed.
+  React.useEffect(() => {
+    stagedRef.current = staged;
+  }, [staged]);
 
   const removeFile = (key: string) => {
     const updated = staged.filter((s) => s.key !== key);

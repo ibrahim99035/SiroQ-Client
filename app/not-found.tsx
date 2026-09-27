@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -14,10 +15,10 @@ export default function NotFound() {
       </p>
       <div className="mt-6 flex gap-3">
         <Button asChild variant="outline">
-          <a href="/login">Back to sign in</a>
+          <Link href="/login">Back to sign in</Link>
         </Button>
         <Button asChild>
-          <a href="/">Home</a>
+          <Link href="/">Home</Link>
         </Button>
       </div>
     </main>

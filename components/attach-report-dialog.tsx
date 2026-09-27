@@ -16,7 +16,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { attachReport } from "@/lib/data";
-import { useAppStore, useCurrentUser, useRevision } from "@/lib/store";
+import { useCurrentUser, useRevision } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({

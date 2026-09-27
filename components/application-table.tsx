@@ -41,6 +41,40 @@ function sortRows(rows: ApplicationRow[], key: SortKey, dir: SortDir): Applicati
   });
 }
 
+/**
+ * Defined at module scope rather than inside `ApplicationTable`: a component
+ * created during render is a fresh type on every render, which remounts its
+ * subtree and defeats memoisation.
+ */
+function SortHeader({
+  label,
+  k,
+  sortKey,
+  sortDir,
+  onToggle,
+}: {
+  label: string;
+  k: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onToggle: (k: SortKey) => void;
+}) {
+  const active = sortKey === k;
+  const Icon = active ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onToggle(k)}
+        className="inline-flex items-center gap-1 font-medium text-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        {label}
+        <Icon className={cnIcon(active)} aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+
 export function ApplicationTable({
   rows,
   scopeLabel,
@@ -79,24 +113,7 @@ export function ApplicationTable({
     }
   };
 
-  const SortHeader = ({ label, k }: { label: string; k: SortKey }) => {
-    const active = sortKey === k;
-    const Icon = active ? (sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
-    return (
-      <th
-        aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-      >
-        <button
-          type="button"
-          onClick={() => toggleSort(k)}
-          className="inline-flex items-center gap-1 font-medium text-muted transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          {label}
-          <Icon className={cnIcon(active)} aria-hidden="true" />
-        </button>
-      </th>
-    );
-  };
+  const sortHeaderProps = { sortKey, sortDir, onToggle: toggleSort };
 
   return (
     <div>
@@ -147,11 +164,11 @@ export function ApplicationTable({
           <table className="ruled-table">
             <thead>
               <tr>
-                <SortHeader label="Filing ID" k="submittedAt" />
-                <SortHeader label="Title" k="title" />
+                <SortHeader label="Filing ID" k="submittedAt" {...sortHeaderProps} />
+                <SortHeader label="Title" k="title" {...sortHeaderProps} />
                 <th>Pharmacy</th>
                 <th>Submitted</th>
-                <SortHeader label="Status" k="status" />
+                <SortHeader label="Status" k="status" {...sortHeaderProps} />
                 <th className="text-right">Records</th>
               </tr>
             </thead>

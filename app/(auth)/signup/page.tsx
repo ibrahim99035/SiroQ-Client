@@ -60,12 +60,12 @@ export default function SignupPage() {
   if (createdEmail) {
     return (
       <div className="card p-8">
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Account created</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-ink">Request received</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
-          An account has been created for{" "}
-          <span className="font-mono text-[12px] text-ink">{createdEmail}</span>. It starts as a
-          pharmacy worker with no pharmacy assigned, so the dashboard stays empty until an
-          association administrator assigns you one.
+          Your request for{" "}
+          <span className="font-mono text-[12px] text-ink">{createdEmail}</span> is with an
+          administrator. Once you are attached to a pharmacy you will get an invitation link to set a
+          password. No account is active yet, so there is nothing to sign in to.
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           <Button asChild>
@@ -82,9 +82,9 @@ export default function SignupPage() {
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight text-ink">Create an account</h1>
-      <p className="mt-2 text-sm text-muted">
-        Preview accounts live only in this session. Sign-ups are created as pharmacy workers with
-        no pharmacy assigned.
+      <p className="mt-2 text-sm leading-relaxed text-muted">
+        This workspace is invite-only. Tell us who you are and an administrator will attach you to a
+        pharmacy, then send you a link to set a password.
       </p>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="mt-6 space-y-4">

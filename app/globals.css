@@ -12,6 +12,16 @@
  */
 
 :root {
+  /*
+   * Font stacks are declared here rather than injected by `next/font/google`.
+   * The Google loader fetches woff2 files from fonts.gstatic.com at build time,
+   * which makes the build depend on outbound network access and fail on hosts
+   * that can reach fonts.googleapis.com but not gstatic. These stacks keep the
+   * real Plex faces first, so they are used automatically wherever IBM Plex is
+   * installed; self-host the woff2 files via `next/font/local` to guarantee them.
+   */
+  --font-plex-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-plex-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
     monospace;
 
@@ -51,8 +61,7 @@
 
   body {
     @apply bg-paper font-sans text-ink antialiased;
-    font-family: var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui,
-      -apple-system, sans-serif;
+    font-family: var(--font-plex-sans);
     font-size: 0.875rem;
     line-height: 1.5;
     background-image: radial-gradient(
@@ -162,7 +171,7 @@
 
   /* Stat figure: semibold UI numeral with tight tracking. */
   .stat-figure {
-    font-family: var(--font-plex-sans), "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--font-plex-sans);
     font-variant-numeric: tabular-nums;
     font-size: 1.75rem;
     font-weight: 700;

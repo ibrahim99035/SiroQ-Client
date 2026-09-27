@@ -22,12 +22,28 @@ automated report generation.
 - Database layer: 11 tables, schema pushed, seeded
   (2 associations, 5 pharmacies, 11 users, 16 applications, 19 files,
   36 status events, 8 reports)
-- `tsc --noEmit` clean
+- `tsc --noEmit` clean · `eslint .` 0 errors (4 known `react-hook-form`
+  warnings) · production build 0 errors / 0 warnings
 - `prisma/schema.prisma` + `prisma/seed.ts` written
 - `lib/db.ts` Prisma singleton working
-- Frontend spec fixes (see "Fixed this session" at the bottom)
+- **Auth**: opaque hashed session cookies, login/logout, invite-only signup,
+  single-use invite acceptance, password reset, `AuthError` → 401,
+  `PermissionError` → 403
+- **Storage**: local + S3-compatible drivers, upload slot → presigned PUT →
+  complete → authenticated content read; CSV/XLSX validation, SHA-256, size and
+  extension limits, path-traversal guards
+- **Upload tenant isolation** (Phase 2, partial) — see `docs/AUTHORIZATION.md`
+  and `npm run verify:authz` (12 assertions, suite validated against the
+  reintroduced vulnerability)
+- Build is hermetic: no network fetch at build time
 
-**Not started:** everything that connects the app to the database.
+**Not started:**
+
+- Phase 2 remainder: page-level authorization (all 9 `app/(app)/` pages are
+  still client components), impersonation switcher removal
+- Rate limiting on auth routes
+- Phase 3: everything that replaces the mock data layer (`lib/data.ts`,
+  19 importing files) with Prisma-backed API routes
 
 ---
 
@@ -203,15 +219,22 @@ app/api/** (new) ── cookie ── getCurrentUser() (new)
 
 ## Phase 2 — Server-side authorization · 5 steps
 
-- [ ] 2.1 `lib/scopes.ts` — session → Prisma `where`. Derive `associationId` /
+Normative spec: **`docs/AUTHORIZATION.md`**. Do not hand-roll a role check in a
+route; the rules and the reasoning live there.
+
+- [x] 2.1 `lib/scopes.ts` — session → Prisma `where`. Derive `associationId` /
       `pharmacyId` from the **session**, never the request body. This is the
       fix for the classic multi-tenant IDOR.
-- [ ] 2.2 `requireUser()` / `requirePermission()` → 401 / 403
-- [ ] 2.3 Guard every route under `/api`
+      *Done for uploads via `lib/upload-access.ts`; still open for the
+      application/listing routes.*
+- [x] 2.2 `requireUser()` / `requirePermission()` → 401 / 403
+- [ ] 2.3 Guard every route under `/api` — *uploads + users done; listing and
+      mutation routes do not exist yet (Phase 3)*
 - [ ] 2.4 `/applications/[id]` scope check **before** any data is sent, so a
       worker probing another pharmacy's UUID gets 403 — not an empty page
-- [ ] 2.5 Verify all 4 roles × scoped data. Moderator must be read-only
-      everywhere.
+      *(blocked on Phase 3; the page renders mock data today)*
+- [x] 2.5 Verify roles × scoped data. `npm run verify:authz` — moderator
+      read-only confirmed, both tenant roles confirmed in both directions
 
 ---
 
@@ -340,10 +363,47 @@ Phase 7 (any time after 3)
    `:8000`. Keep the two databases separate.
 5. **The analysis service stores its own file bytes** on disk. That service and
    this app are independent bounded contexts; link explicitly, never by name.
+6. **Next's dev file watcher is unreliable on this mount.** A route can compile
+   once and never rebuild after an edit, so a dev server will happily serve
+   *stale* code and a verification run can pass against code you already
+   changed. Before any verification run: kill the server by port
+   (`ss -lptn 'sport = :3000'`), `rm -rf .next/dev`, relaunch, and confirm the
+   route appears in a `Compiling` line. Prefer a production build for anything
+   load-bearing. Related: killing a dev server mid-write leaves **corrupted**
+   `.next/dev/types/*.ts` that makes `tsc` fail with bogus syntax errors —
+   `rm -rf .next/dev` fixes it.
+7. **Egress from this machine is flaky.** Observed `ETIMEDOUT` to the Neon
+   pooler, registry timeouts, and unreachable `fonts.gstatic.com` — often in
+   the same session. Neon resolves **IPv6-only** for
+   `ep-…-pooler.c-6.us-east-2.aws.neon.tech`. Retry before concluding the code
+   is broken. A registry/host mirror would remove a whole class of this.
+8. **`pkill -f "next dev"` kills your own shell.** The pattern matches the
+   command line of the shell running it. Kill by listening port instead.
 
 ---
 
-## Fixed this session (frontend, uncommitted)
+## Fixed this session
+
+**Cross-tenant data leak (critical).** `app/api/uploads/[id]/content/route.ts`
+granted an association admin read access to *any* upload with
+`role === "pharmacy_association_admin" && Boolean(user.associationId)` — the
+owning association was never compared. Every association admin could download
+every other tenant's filings. It also over-restricted `pharmacy_worker`, who
+could only read files they uploaded personally, not their own pharmacy's.
+Fixed via `lib/upload-access.ts`; the role checks are gone.
+
+**Cross-tenant writes (2 paths).** `POST /api/uploads` only checked that the
+application *existed*, so any signed-in user could reserve a slot against any
+filing. `POST /api/uploads/[id]/complete` accepted an `applicationId` override,
+which bypassed even that. Both now require `canAttachToApplication()`, and
+`complete` authorizes *before* writing bytes — the first version checked after,
+which orphaned 10 objects in storage.
+
+**Permission matrix holes.** `attachReport` existed in the action union with no
+implementation for any role, so it returned `false` for everyone but
+`super_admin`. `can()` could not be used for write gating until both tenant
+roles got scoped rows. `PermissionUser` gained `id` so ownership checks are
+possible.
 
 - Association admins were wrongly blocked from creating applications —
   `can()` had no case for it and fell through to `default: false`
@@ -353,6 +413,27 @@ Phase 7 (any time after 3)
   `string | number | boolean | null` so the real analytical service can
   populate it
 - `Inter` → `IBM Plex Sans`; `--hairline` corrected to `#D8DDDA`
+
+**Invite lifecycle.** Public `/signup` creates a tenantless `status=invited`
+row, but the admin invite route returned 409 for that same email — a signup
+request could never be activated. It now adopts never-activated rows
+(`status=invited` **and** `passwordHash=null`) and re-issues a token, while
+still 409-ing on active/disabled accounts so identities cannot be hijacked.
+
+**`PermissionError` returned 500.** Not mapped in `lib/api.ts`, so a worker
+hitting an admin route saw a server error instead of 403. Now mapped.
+
+**Build was not hermetic.** `next/font/google` fetches woff2 from
+`fonts.gstatic.com` at build time (unreachable here) and Turbopack's replacement
+package is Vercel-internal. It only succeeded off a warm `.next` cache that
+had been destroyed. Font stacks now live in `app/globals.css` with IBM Plex
+first, so the real font is used wherever it is installed.
+
+**`npm run lint` was dead.** `next lint` is removed in Next 16, and
+`eslint@8` is incompatible with `eslint-config-next@16` (needs ≥9), so a fresh
+clone could not lint. Migrated to ESLint 9 + `eslint.config.mjs`; all 8 errors
+fixed properly (derived state in `use-resource`, `useSyncExternalStore` in
+`use-mounted`, hoisted `SortHeader`, effect-scoped ref write).
 
 ---
 
@@ -365,7 +446,13 @@ npm run db:deploy    # prisma migrate deploy
 npm run db:seed      # tsx --env-file=.env prisma/seed.ts
 npm run db:reset     # prisma migrate reset --force
 npm run typecheck    # tsc --noEmit
+npm run lint         # eslint .  (0 errors expected; 4 react-hook-form warnings)
+npm run verify:authz # cross-tenant suite — needs STORAGE_DRIVER=local + a dev server
 ```
+
+`verify:authz` self-cleans (its own uploads, application files, storage objects
+and sessions). It is worthless unless you have seen it go red — reintroduce a
+check and confirm it fails. See `docs/AUTHORIZATION.md`.
 
 Local Postgres for offline development: `docker compose up -d db` → :5434.
 The analysis service stack lives in the sibling `SiroQ` project (its own
