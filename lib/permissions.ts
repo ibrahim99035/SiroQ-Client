@@ -5,6 +5,26 @@ import type { User } from "./types";
  * and mutation gate in the app must go through `can` / `requirePermission`.
  * Never inline `user.role === "..."` checks in components.
  */
+
+/**
+ * The only fields an authorization decision actually reads.
+ *
+ * Declared structurally rather than as `Pick<User, ...>` so that both a `User`
+ * from the UI (which omits the tenant ids) and a `SessionUser` resolved from
+ * the cookie (which sets them to `null`) are accepted. Server routes can
+ * therefore pass the session user straight in, without widening it to carry
+ * display-only fields like `createdAt`.
+ *
+ * `id` is not read by `can` — it is carried so ownership checks ("is this your
+ * own record?") can be made alongside the role check without a second lookup.
+ */
+export interface PermissionUser {
+  id: string;
+  role: User["role"];
+  status: User["status"];
+  associationId?: string | null;
+  pharmacyId?: string | null;
+}
 export type PermissionAction =
   | "viewAllData"
   | "viewAssociationData"
@@ -26,11 +46,11 @@ export interface PermissionResource {
 }
 
 export class PermissionError extends Error {
-  user: User | null;
+  user: PermissionUser | null;
   action: PermissionAction;
   constructor(
     message = "You do not have permission to perform this action.",
-    user: User | null = null,
+    user: PermissionUser | null = null,
     action: PermissionAction = "viewAllData",
   ) {
     super(message);
@@ -41,7 +61,7 @@ export class PermissionError extends Error {
 }
 
 export function can(
-  user: User,
+  user: PermissionUser,
   action: PermissionAction,
   resource?: PermissionResource,
 ): boolean {
@@ -73,6 +93,10 @@ export function can(
           return resource?.pharmacyAssociationId === undefined
             ? true
             : resource.pharmacyAssociationId === user.associationId;
+        case "attachReport":
+          // Reports attach to a filing, which is always owned by exactly one
+          // association, so a match on the owning association is sufficient.
+          return resource ? resource.pharmacyAssociationId === user.associationId : true;
         case "manageUsers":
           return resource
             ? resource.associationId === user.associationId
@@ -91,6 +115,8 @@ export function can(
           return resource
             ? resource.pharmacyId === user.pharmacyId
             : true;
+        case "attachReport":
+          return resource ? resource.pharmacyId === user.pharmacyId : true;
         default:
           return false;
       }
@@ -99,7 +125,7 @@ export function can(
 
 /** Throws a PermissionError when the acting user cannot perform the action. */
 export function requirePermission(
-  user: User,
+  user: PermissionUser,
   action: PermissionAction,
   resource?: PermissionResource,
 ): void {
@@ -119,7 +145,7 @@ export function requirePermission(
  */
 export type DataScope = "all" | "association" | "pharmacy" | "none";
 
-export function dataScope(user: User): DataScope {
+export function dataScope(user: PermissionUser): DataScope {
   switch (user.role) {
     case "super_admin":
     case "moderator":
