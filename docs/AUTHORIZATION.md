@@ -69,7 +69,7 @@ moderators of all file access. Do not "simplify" it away.
 
 ## Writing: attaching a file to a filing
 
-`canAttachToApplication()` gates the `attachReport` action.
+`canAttachToApplication()` (`lib/upload-access.ts`) gates the file-write path.
 
 - An upload slot may be created unattached (pick-a-file-then-start-a-filing).
 - The `applicationId` supplied at **create** time *and* the one supplied at
@@ -80,10 +80,29 @@ moderators of all file access. Do not "simplify" it away.
 - Authorization happens **before** any bytes are written. A rejected attach
   must not leave an object in storage.
 
-`attachReport` was originally declared in the action union with **no
-implementation for any role**, so it fell through to `default: return false`
-and would have 403'd every non-super-admin. Both tenant roles now have scoped
-rows. If you add an action, add its rows in the same change.
+This gate tests `can(user, "createApplication")`, **not** `attachReport`.
+
+**These are two different rights and conflating them was a live bug.**
+
+| | right | who |
+|---|---|---|
+| `createApplication` | file evidence into a filing | pharmacy worker (own pharmacy), association admin (own association), staff |
+| `attachReport` | produce the review report and mark the filing `reported` | **super admin only** |
+
+`canAttachToApplication` once delegated to `attachReport`, so `attachReport`
+carried a scoped row for tenant roles to make file attachment work. The result
+was that a pharmacy worker could attach a report to her own filing and stamp it
+`reported` — the terminal state, the one the pharmacy receives — without Requis
+reviewing anything. Found by `npm run verify:reports`, not by reading the
+matrix.
+
+Note the shape of the mistake: it looked correct, and `docs/AUTHORIZATION.md`
+described it in the present tense. Passing a test and being described in the
+docs are not the same as being right.
+
+If you add an action, add its rows in the same change, and add a role-negative
+assertion to `verify:authz` — a matrix that is only tested from the allowed side
+cannot catch a row that was never meant to be there.
 
 ---
 

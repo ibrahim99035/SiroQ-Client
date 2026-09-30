@@ -8,8 +8,12 @@
  * running server rather than asserted in prose.
  *
  * Usage:
- *   STORAGE_DRIVER=local npx next dev &
+ *   npx next dev &
  *   npx tsx scripts/verify-authz.ts
+ *
+ * Works against either storage driver: the server reports `mode: "direct"` or
+ * `mode: "presigned"` on slot creation and the suite follows it, so an object
+ * store is exercised exactly as production uses it.
  *
  * Env:
  *   BASE_URL            default http://localhost:3000
@@ -21,8 +25,53 @@
 import { unlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
+import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { can } from "@/lib/permissions";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+
+/** Strips the quoting dotenv files use so values compare as plain strings. */
+function env(name: string): string {
+  return (process.env[name] ?? "").replace(/^['"]|['"]$/g, "");
+}
+
+/**
+ * Deletes one stored object through whichever driver the app is running.
+ *
+ * The suite cannot import `lib/storage.ts` — it is `server-only`, so importing
+ * it outside a React Server Component request throws. The client is therefore
+ * rebuilt here from the same environment variables. The mirror matters: when
+ * this still assumed the local driver, every run silently leaked its objects
+ * into the bucket while reporting a clean cleanup.
+ */
+async function removeStoredObject(key: string): Promise<void> {
+  if (!key) return;
+  const driver = (env("STORAGE_DRIVER") || "local").toLowerCase();
+
+  if (driver === "neon" || driver === "s3") {
+    const endpoint = env("S3_ENDPOINT");
+    const bucket = env("S3_BUCKET") || "siroq-filings";
+    if (!endpoint || !env("S3_ACCESS_KEY_ID")) return;
+    const s3 = new S3Client({
+      region: env("S3_REGION") || "us-east-2",
+      endpoint,
+      credentials: {
+        accessKeyId: env("S3_ACCESS_KEY_ID"),
+        secretAccessKey: env("S3_SECRET_ACCESS_KEY"),
+      },
+      forcePathStyle: (env("S3_FORCE_PATH_STYLE") || "true") !== "false",
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+    });
+    await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })).catch(() => undefined);
+    return;
+  }
+
+  const root = resolve(env("STORAGE_LOCAL_ROOT") || "./data/storage");
+  const target = resolve(join(root, key));
+  if (!target.startsWith(root + sep)) return;
+  await unlink(target).catch(() => undefined);
+}
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 const PASSWORD = process.env.SEED_PASSWORD ?? "siroq-dev-password";
@@ -136,11 +185,37 @@ async function uploadFile(
   const uploadId = uploadIdFrom(created.body);
   createdUploads.push(uploadId);
   createdKeys.push(storageKeyFrom(created.body));
+
+  // The server chooses the transport. With an object store it returns a
+  // presigned URL and the bytes go there directly, so /complete only verifies
+  // what actually landed. The local driver has nothing to presign against, so
+  // the bytes ride along with /complete instead. Branching on `mode` is what
+  // lets this suite exercise the deployed configuration rather than only the
+  // offline one — before this, the suite silently assumed `local` and reported
+  // a false "the file never arrived in storage" against a working bucket.
+  const mode = (created.body as { mode?: unknown } | null)?.mode;
+  if (mode === "presigned") {
+    const url = (created.body as { url?: unknown }).url;
+    const headers =
+      (created.body as { headers?: Record<string, string> }).headers ?? {};
+    if (typeof url !== "string" || !url) {
+      return { uploadId, created: created.status, completed: { status: 0, body: null } };
+    }
+    const put = await fetch(url, { method: "PUT", headers, body: CSV });
+    if (!put.ok) {
+      return {
+        uploadId,
+        created: created.status,
+        completed: { status: put.status, body: { error: `presigned PUT failed` } },
+      };
+    }
+  }
+
   const completed = await call(`/api/uploads/${uploadId}/complete`, {
     method: "POST",
     cookie,
     body: {
-      dataBase64: Buffer.from(CSV).toString("base64"),
+      ...(mode === "presigned" ? {} : { dataBase64: Buffer.from(CSV).toString("base64") }),
       ...(applicationId ? { applicationId } : {}),
     },
   });
@@ -164,13 +239,9 @@ async function cleanup(): Promise<void> {
     }
 
     // Remove the stored bytes as well, so a run leaves no orphaned objects
-    // behind. Only the local driver is exercised by this suite.
-    const root = resolve(process.env.STORAGE_LOCAL_ROOT || "./data/storage");
+    // behind in whichever store the app is using.
     for (const key of createdKeys) {
-      if (!key) continue;
-      const target = resolve(join(root, key));
-      if (!target.startsWith(root + sep)) continue;
-      await unlink(target).catch(() => undefined);
+      await removeStoredObject(key);
     }
     console.log(`\n  cleaned up ${createdUploads.length} upload slot(s)`);
   } catch (err) {
@@ -204,6 +275,8 @@ async function main(): Promise<void> {
   const [assocA, assocB] = tenants as [string, string];
   const appA = apps.find((a) => a.associationId === assocA)!;
   const appB = apps.find((a) => a.associationId === assocB)!;
+  const ownAssociation = appA.associationId;
+  const ownPharmacy = appA.pharmacyId;
 
   const adminA = await prisma.user.findFirstOrThrow({
     where: { role: "pharmacy_association_admin", associationId: assocA, status: "active" },
@@ -327,7 +400,103 @@ async function main(): Promise<void> {
   const anon = await call(`/api/uploads/${seed.uploadId}/content`);
   check("no cookie is rejected", anon.status === 401, `expected 401, got ${anon.status}`);
 
-  // --- 5. Unknown ids do not leak -----------------------------------------
+  // --- 5. The permission matrix, denied side ------------------------------
+  // A matrix tested only from the allowed side cannot catch a row that should
+  // never have been there. `attachReport` is the worked example: it carried a
+  // scoped tenant row so that file attachment would work, which let a pharmacy
+  // worker mark her own filing `reported`. See docs/AUTHORIZATION.md.
+  console.log("\n  Permission matrix (denied side)");
+  const resource = (pharmacyId: string, associationId: string) => ({
+    associationId,
+    pharmacyId,
+    pharmacyAssociationId: associationId,
+  });
+
+  // Literal actors rather than seeded rows: this asserts the shape of the
+  // matrix, so it must not depend on a fixture being present or on which
+  // tenant that fixture happens to be.
+  const ACTOR = {
+    worker: {
+      id: "actor-worker",
+      role: "pharmacy_worker",
+      status: "active",
+      associationId: assocA,
+      pharmacyId: ownPharmacy,
+    },
+    assocAdmin: {
+      id: "actor-admin",
+      role: "pharmacy_association_admin",
+      status: "active",
+      associationId: assocA,
+      pharmacyId: null,
+    },
+    moderator: {
+      id: "actor-moderator",
+      role: "moderator",
+      status: "active",
+      associationId: null,
+      pharmacyId: null,
+    },
+    superAdmin: {
+      id: "actor-super",
+      role: "super_admin",
+      status: "active",
+      associationId: null,
+      pharmacyId: null,
+    },
+  } as const;
+
+  const ownResource = resource(ownPharmacy, ownAssociation);
+  const otherResource = resource(appB.pharmacyId, assocB);
+
+  // `attachReport` is Requis-side: it produces the deliverable the pharmacy
+  // receives. Only a super admin may do it, in any tenant.
+  for (const label of ["worker", "assocAdmin", "moderator"] as const) {
+    check(
+      `${label} cannot attachReport, in its own tenant or any other`,
+      can(ACTOR[label], "attachReport", ownResource) === false &&
+        can(ACTOR[label], "attachReport", otherResource) === false,
+    );
+  }
+  check(
+    "super admin can attachReport",
+    can(ACTOR.superAdmin, "attachReport", ownResource) === true,
+  );
+  check(
+    "a disabled actor cannot attachReport even as super admin",
+    can({ ...ACTOR.superAdmin, status: "disabled" }, "attachReport", ownResource) === false,
+  );
+
+  // Status changes are also Requis-side.
+  check(
+    "worker cannot updateApplicationStatus",
+    can(ACTOR.worker, "updateApplicationStatus", ownResource) === false,
+  );
+  check(
+    "assocAdmin cannot updateApplicationStatus",
+    can(ACTOR.assocAdmin, "updateApplicationStatus", ownResource) === false,
+  );
+  check(
+    "super admin can updateApplicationStatus",
+    can(ACTOR.superAdmin, "updateApplicationStatus", ownResource) === true,
+  );
+
+  // Filing-side writes stay with the tenant.
+  check(
+    "worker can createApplication in its own pharmacy",
+    can(ACTOR.worker, "createApplication", ownResource) === true,
+  );
+  check(
+    "worker cannot createApplication in another tenant",
+    can(ACTOR.worker, "createApplication", otherResource) === false,
+  );
+  // `canAttachToApplication` is not asserted here: `lib/upload-access.ts` is
+  // `server-only` and this suite is plain tsx. Its cross-tenant behaviour is
+  // covered over HTTP by the upload assertions above, which is the stronger
+  // form of the same claim. It delegates to `createApplication`, so the two
+  // `createApplication` rows above are the matrix it now depends on.
+
+  // --- 6. Unknown ids do not leak -----------------------------------------
   console.log("\n  Non-disclosure");
   const missing = await call("/api/uploads/00000000-0000-4000-8000-000000000000/content", {
     cookie: cookieAdminA,

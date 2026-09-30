@@ -174,14 +174,15 @@ export function UserDirectory({
         title={`Remove ${deleting?.name ?? "user"}?`}
         description={
           <>
-            The identity is removed from the directory. Filings keep their audit trail (the name is
-            retained on records), but the account can no longer sign in on this preview.
+            The identity is removed from the directory and can no longer sign in. Filings keep their
+            audit trail — the submitter name is retained on the records the person filed.
           </>
         }
         confirmLabel="Remove user"
         onConfirm={async () => {
           if (!deleting || !actor) return;
-          removeUser(deleting.id, actor);
+          // A self-delete is refused by the server; ConfirmDialog shows why.
+          await removeUser(deleting.id, actor);
         }}
       />
     </PermissionGate>

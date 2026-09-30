@@ -49,8 +49,8 @@ export default function LandingPage() {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
             { label: "Filing statuses", value: "4" },
-            { label: "Seeded associations", value: "2" },
-            { label: "Seeded users", value: "11" },
+            { label: "Tenant isolation", value: "per org" },
+            { label: "Storage", value: "private" },
             { label: "Review time basis", value: "history" },
           ].map((item) => (
             <div key={item.label} className="card px-5 py-5">
@@ -177,8 +177,8 @@ export default function LandingPage() {
                 Walk every role in under two minutes.
               </h2>
               <p className="mt-2 max-w-xl text-sm text-paper-raised/70">
-                No real backend, no real filings — a mock data layer with eleven identities and a
-                complete review lifecycle.
+                A real review lifecycle: accounts, tenants, filings, private file storage, and a
+                report audit trail.
               </p>
             </div>
             <Link

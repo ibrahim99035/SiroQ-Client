@@ -240,6 +240,12 @@ route; the rules and the reasoning live there.
 
 ## Phase 3 — Data layer swap · 7 steps
 
+> **In progress (started 2026-09-29).** The detailed execution plan, the
+> environment findings (Neon bucket name is `uploads`, not `siroq-filings`;
+> `MAIL_FROM` must stay empty for Gmail; the sequence must start at 2617), and
+> the locked decisions live in **[`docs/PHASE3-DATA-LAYER.md`](./PHASE3-DATA-LAYER.md)**.
+> Read that first.
+
 - [ ] 3.1 ~14 API routes: applications (list / detail / create), files, reports,
       status transitions, users, pharmacies, associations, dashboard stats
 - [ ] 3.2 Rewrite `lib/data.ts` internals against `fetch()` — **keep every

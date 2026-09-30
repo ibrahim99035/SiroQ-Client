@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiFetch } from "@/lib/client-api";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -16,26 +17,55 @@ type FormValues = z.infer<typeof schema>;
 
 export default function ForgotPasswordPage() {
   const [sentTo, setSentTo] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: "" },
   });
 
-  const onSubmit = (values: FormValues) => setSentTo(values.email);
+  /**
+   * Posts the address to the real route.
+   *
+   * This used to only set local state and show a confirmation, so the form
+   * looked like it worked while no email was ever requested. The route answers
+   * identically whether or not the account exists, which is deliberate: a
+   * different answer for a known address would turn this form into an account
+   * enumeration oracle. The confirmation is therefore the same either way.
+   */
+  const onSubmit = async (values: FormValues) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch<{ ok: true; message: string }>("/api/auth/forgot-password", {
+        method: "POST",
+        body: { email: values.email },
+      });
+      setSentTo(values.email);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The request could not be sent.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight text-ink">Reset your password</h1>
       <p className="mt-2 text-sm text-muted">
-        This preview does not send email. The form accepts an address and confirms the intended
-        flow, then returns you to sign-in.
+        Enter the address on your account and we will send a link to set a new password. The link
+        expires in one hour.
       </p>
 
       {sentTo ? (
         <div className="card mt-6 p-6">
           <p className="text-sm leading-relaxed text-ink">
-            If an account exists for <span className="font-mono text-[12px]">{sentTo}</span>, a
-            reset link would be sent. In this mock preview, no mail is delivered.
+            If an account exists for <span className="font-mono text-[12px]">{sentTo}</span>, a reset
+            link is on its way. Check your spam folder if it has not arrived in a few minutes.
+          </p>
+          <p className="mt-3 text-[13px] text-muted">
+            We show the same confirmation for every address so that this page cannot be used to find
+            out who has an account.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button asChild>
@@ -55,8 +85,9 @@ export default function ForgotPasswordPage() {
               <p className="text-xs text-[#7a2e26]">{form.formState.errors.email.message}</p>
             ) : null}
           </div>
-          <Button type="submit" className="w-full" size="lg">
-            Send reset instructions
+          {error ? <p className="text-xs text-[#7a2e26]">{error}</p> : null}
+          <Button type="submit" className="w-full" size="lg" disabled={busy}>
+            {busy ? "Sending…" : "Send reset instructions"}
           </Button>
         </form>
       )}

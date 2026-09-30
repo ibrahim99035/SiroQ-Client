@@ -19,7 +19,7 @@ export default function ErrorPage({
       </h1>
       <p className="mt-2 max-w-md text-sm text-muted">
         {error.message || "An unexpected runtime error occurred."} Retry to re-render the screen; if
-        it persists, the data layer may be exercising its simulated fault.
+        it persists, the problem is on the server and an administrator should check the logs.
       </p>
       <div className="mt-6">
         <Button onClick={reset}>Retry</Button>

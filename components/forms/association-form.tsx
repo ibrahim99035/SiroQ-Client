@@ -63,18 +63,20 @@ export function AssociationFormDialog({
       : { name: "", region: "", gmpCertificateId: "", status: "active" },
   });
 
-  const onSubmit = (values: FormValues) => {
+  const onSubmit = async (values: FormValues) => {
     if (!user) return;
     setError(null);
     try {
       if (association) {
-        updateAssociation(association.id, values, user);
+        await updateAssociation(association.id, values, user);
       } else {
-        createAssociation(values, user);
+        await createAssociation(values, user);
       }
       onSaved();
       onOpenChange(false);
     } catch (reason) {
+      // Server-side refusals land here too — e.g. a suspended association
+      // rejecting a new pharmacy — so the message is shown verbatim.
       setError(reason instanceof Error ? reason.message : "The operation could not be completed.");
     }
   };

@@ -1,9 +1,6 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import * as React from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,22 +13,20 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { attachReport } from "@/lib/data";
-import { useCurrentUser, useRevision } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/lib/store";
 
-const schema = z.object({
-  note: z
-    .string()
-    .max(240, "Keep the note under 240 characters.")
-    .optional()
-    .or(z.literal("")),
-});
-type FormValues = z.infer<typeof schema>;
+/** Mirrors the server's own limit so an oversized file is refused before upload. */
+const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
 
 /**
- * Super admin's "Attach Report" action. Client-side form (react-hook-form +
- * zod) that mutates the mock layer; the filing flips to `reported` and every
- * scoped view re-renders via the store revision.
+ * Super admin's "Attach report" action.
+ *
+ * The document is chosen here and parsed by the server. This used to call a
+ * mock that synthesised a plausible-looking report from the ledger metadata —
+ * "Data quality score 94.2%", a grade, a schema version — and stamped the
+ * filing `reported` in the client store. Nothing about that number came from
+ * anywhere, which for the artefact a pharmacy actually receives is worse than
+ * having no report at all.
  */
 export function AttachReportDialog({
   applicationId,
@@ -45,23 +40,65 @@ export function AttachReportDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const user = useCurrentUser();
-  useRevision();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { note: "" },
-  });
+  const [note, setNote] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const onSubmit = async (values: FormValues) => {
+  /**
+   * Cleared on close so a refused attempt does not leave the previous document
+   * staged behind a fresh dialog. Done in the close path rather than an effect
+   * on `open`: an effect that resets state runs after the render that opens the
+   * dialog, so the empty state would flash and every such effect re-renders the
+   * tree it was meant to leave alone.
+   */
+  const close = React.useCallback(() => {
+    setFile(null);
+    setNote("");
+    setError(null);
+    setBusy(false);
+    if (inputRef.current) inputRef.current.value = "";
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const pick = (candidate: File | null) => {
+    setError(null);
+    if (!candidate) {
+      setFile(null);
+      return;
+    }
+    if (!/\.json$/i.test(candidate.name)) {
+      setFile(null);
+      setError("The report document must be a .json file.");
+      return;
+    }
+    if (candidate.size > MAX_DOCUMENT_BYTES) {
+      setFile(null);
+      setError(
+        `That document is ${Math.round(candidate.size / 1024)} KB. The limit is 4096 KB.`,
+      );
+      return;
+    }
+    setFile(candidate);
+  };
+
+  const onSubmit = async () => {
     if (!user) return;
+    if (!file) {
+      setError("Choose the report document to attach.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      attachReport(applicationId, user, { affirmIssues: values.note });
-      form.reset();
+      await attachReport(applicationId, user, {
+        document: await file.text(),
+        status: "final",
+        note: note.trim() || undefined,
+      });
       onCompleted?.();
-      onOpenChange(false);
+      close();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The report could not be attached.");
     } finally {
@@ -70,49 +107,64 @@ export function AttachReportDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Attach report</DialogTitle>
           <DialogDescription>
-            Generates a review report from the ledger metadata and advances this filing to{" "}
-            <span className="font-mono text-[11px] text-ink">reported</span>. Result fields come
-            from the reference service; raw data is attached alongside.
+            Uploads the review document for this filing and advances it to{" "}
+            <span className="font-mono text-[11px] text-ink">reported</span>. The document is
+            stored as attached and can be read back verbatim; nested results render in the panel.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="report-document">Report document</Label>
+            <input
+              ref={inputRef}
+              id="report-document"
+              type="file"
+              accept="application/json,.json"
+              onChange={(event) => pick(event.target.files?.[0] ?? null)}
+              className="block w-full text-[13px] text-ink file:mr-3 file:rounded-stamp file:border file:border-hairline file:bg-paper-raised file:px-3 file:py-1.5 file:text-[13px] file:text-ink"
+            />
+            <p className="text-xs text-muted">
+              {file
+                ? `${file.name} · ${Math.round(file.size / 1024)} KB`
+                : "A JSON object, up to 4096 KB. Parsed and validated on the server."}
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="report-note">Work order note (optional)</Label>
             <Textarea
               id="report-note"
+              value={note}
+              maxLength={500}
+              onChange={(event) => setNote(event.target.value)}
               placeholder="e.g. Forward to compliance for scheduling review."
-              {...form.register("note")}
             />
-            {form.formState.errors.note ? (
-              <p className="text-xs text-[var(--status-rejected-fill)]">
-                {form.formState.errors.note.message}
-              </p>
-            ) : null}
           </div>
+
           {error ? (
-            <p role="alert" className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]">
+            <p
+              role="alert"
+              className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]"
+            >
               {error}
             </p>
           ) : null}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="warm"
-              disabled={busy}
-              className={cn(busy && "pointer-events-none opacity-60")}
-            >
-              {busy ? "Attaching…" : "Attach report"}
-            </Button>
-          </DialogFooter>
-        </form>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="warm" disabled={busy || !file} onClick={() => void onSubmit()}>
+            {busy ? "Attaching…" : "Attach report"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

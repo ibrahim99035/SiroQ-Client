@@ -11,6 +11,22 @@ const config = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
+    rules: {
+      /**
+       * `lib/data.ts` keeps its original 21 call signatures so the ~14
+       * consumers can migrate independently. Once a function is backed by a
+       * real endpoint, its `user: User` argument is no longer read — the
+       * server re-derives scope from the session, which is the only place
+       * authorization may be decided. Underscore-prefixed parameters mark
+       * exactly those, so they should not read as mistakes.
+       */
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
+  {
     ignores: [
       ".next/**",
       "node_modules/**",

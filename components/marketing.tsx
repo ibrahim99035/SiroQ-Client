@@ -62,8 +62,8 @@ export function MarketingFooter() {
               <span className="text-[15px] font-semibold text-ink">Requis</span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              A multi-tenant review workspace for pharmacy application filings. Built on a mock
-              data layer for evaluation.
+              A multi-tenant review workspace for pharmacy application filings: accounts, tenant
+              isolation, private file storage, and an auditable review lifecycle.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-10 text-sm sm:grid-cols-3">
@@ -106,7 +106,7 @@ export function MarketingFooter() {
           </div>
         </div>
         <p className="mt-10 border-t border-hairline pt-5 font-mono text-[11px] text-muted">
-          Requis · mock data layer · no real backend, no real filings
+          Requis · tenant-scoped review workspace · private file storage
         </p>
       </div>
     </footer>

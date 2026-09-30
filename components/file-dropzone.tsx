@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  AlertTriangle,
   CheckCircle2,
   FileSpreadsheet,
   UploadCloud,
@@ -44,7 +43,9 @@ export function FileDropzone({
   const stageFiles = (fileList: FileList | File[]) => {
     const next: StagedFile[] = [];
     Array.from(fileList).forEach((file) => {
-      const candidate = validateUpload(file.name, file.size);
+      // The handle travels with the candidate: the upload itself needs the real
+      // bytes, and re-deriving them later from `fileName` is impossible.
+      const candidate = validateUpload(file.name, file.size, file);
       next.push({ key: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, candidate, progress: 0 });
     });
     const merged = [...staged, ...next];
@@ -148,11 +149,14 @@ export function FileDropzone({
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-mono text-[12px] text-ink">{candidate.fileName}</p>
+                    {/* Byte size only. Row and column counts used to be shown
+                        here, but they came from `simulateFileValidation`, which
+                        invents them from the file name — a 5-row, 6-column CSV
+                        was cheerfully labelled "16 rows · 5 cols". The real
+                        figures are read back from storage after the upload and
+                        are what the ledger shows. */}
                     <p className="font-mono text-[11px] text-muted">
                       {formatBytes(candidate.sizeBytes)}
-                      {candidate.kind
-                        ? ` · ${candidate.rowCount.toLocaleString("en-US")} rows · ${candidate.columnCount} cols`
-                        : ""}
                     </p>
                     <div className="mt-2">
                       {isUploading ? (
@@ -186,6 +190,14 @@ export function FileDropzone({
   );
 }
 
+/**
+ * The only verdict available before the upload is "wrong extension", which is a
+ * fact about the name the browser already has. Everything else is deliberately
+ * unsaid: the schema result, row count and column count are all derived from the
+ * stored bytes in `POST /api/uploads/[id]/complete`, and the previous
+ * implementation showed a confident "All rows passed schema checks" here for a
+ * file it had never opened.
+ */
 function FileStatus({ candidate, rejected }: { candidate: UploadCandidate; rejected: boolean }) {
   if (rejected) {
     return (
@@ -195,20 +207,10 @@ function FileStatus({ candidate, rejected }: { candidate: UploadCandidate; rejec
       </p>
     );
   }
-  if (candidate.state === "valid") {
-    return (
-      <p className="flex items-start gap-1.5 text-[12px] leading-snug text-[#245c42]">
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        {candidate.reason}
-      </p>
-    );
-  }
-  const Icon = candidate.state === "warning" ? AlertTriangle : XCircle;
-  const tone = candidate.state === "warning" ? "text-[#7a5c08]" : "text-[#9c3c30]";
   return (
-    <p className={cn("flex items-start gap-1.5 text-[12px] leading-snug", tone)}>
-      <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      {candidate.reason}
+    <p className="flex items-start gap-1.5 text-[12px] leading-snug text-muted">
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#245c42]" aria-hidden="true" />
+      Queued. Contents are checked on the server once the file is stored.
     </p>
   );
 }

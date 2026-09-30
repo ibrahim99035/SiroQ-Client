@@ -216,6 +216,27 @@ async function main(): Promise<void> {
   }
   console.log(`  reports: ${reportCount}`);
 
+  // The seeded filings write `reference` explicitly, which bypasses the
+  // database default and therefore never advances `application_reference_seq`.
+  // The truncate above only restarts *table* identities; the sequence is a
+  // standalone object and survives. So after a re-seed the sequence still held
+  // whatever value the previous database happened to reach, and the first real
+  // filing could be allocated a reference that already exists — or
+  // `AP-2026-0001`, if the sequence had never been called at all.
+  //
+  // Advance it past the highest seeded reference so the next allocated filing
+  // continues the fixture series instead of colliding with it.
+  const [{ suffix }] = await prisma.$queryRawUnsafe<[{ suffix: number | null }]>(
+    `SELECT MAX(NULLIF(regexp_replace(reference, '^AP-2026-', ''), '')::bigint) AS suffix
+       FROM "applications"`,
+  );
+  if (suffix !== null) {
+    await prisma.$executeRawUnsafe(
+      `SELECT setval('application_reference_seq', ${suffix}::bigint, true)`,
+    );
+    console.log(`  reference sequence advanced to AP-2026-${String(suffix).padStart(4, "0")}`);
+  }
+
   console.log(`\nDone. Every seeded user shares the password: ${DEV_PASSWORD}`);
 }
 

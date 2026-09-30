@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -13,7 +14,8 @@ import {
   resolveInviteTarget,
 } from "@/lib/invites";
 import { absoluteUrl, sendWorkspaceInvite } from "@/lib/mail";
-import { requirePermission } from "@/lib/permissions";
+import { can, requirePermission } from "@/lib/permissions";
+import { userDirectoryWhere } from "@/lib/scopes";
 
 const inviteSchema = z.object({
   name: z.string().min(1, "Enter a name.").max(120),
@@ -26,6 +28,60 @@ const inviteSchema = z.object({
   ]),
   associationId: z.string().uuid().optional(),
   pharmacyId: z.string().uuid().optional(),
+});
+
+const userListSelect = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  associationId: true,
+  pharmacyId: true,
+  status: true,
+  createdAt: true,
+} as const;
+
+/**
+ * GET /api/users
+ *
+ * The team directory. Scope comes from the session, never the query string.
+ *
+ * Note a deliberate difference from the mock, which returned an empty array for
+ * a caller lacking `manageUsers`. A real endpoint answers 403: an empty list
+ * reads as "this workspace has no users", which is both wrong and a quieter
+ * failure than an explicit refusal.
+ */
+export const GET = withErrorHandling(async (request: Request) => {
+  const actor = await requireUser();
+  if (!can(actor, "manageUsers")) {
+    return apiError("forbidden", "You cannot view the team directory.", 403);
+  }
+
+  const search = new URL(request.url).searchParams.get("q")?.trim();
+  const scoped = userDirectoryWhere(actor);
+  const where: Prisma.UserWhereInput = search
+    ? {
+        AND: [
+          scoped,
+          {
+            OR: [
+              { name: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+            ],
+          },
+        ],
+      }
+    : scoped;
+
+  const users = await prisma.user.findMany({
+    where,
+    select: userListSelect,
+    // Name first, then email, so the ordering is total and stable: two people
+    // sharing a name must not swap places between two renders.
+    orderBy: [{ name: "asc" }, { email: "asc" }],
+  });
+
+  return NextResponse.json({ ok: true, users });
 });
 
 /**

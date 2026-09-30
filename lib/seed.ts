@@ -287,6 +287,10 @@ const FILE_SPECS: FileSpec[] = [
   file("harborview_weekly_0825.csv", "csv", 872_000, 1311, 5, COL_DISPENSE, "invalid", BAD_DATE, iso(2026, 8, 25, 9)),
   file("harborview_weekly_0908.csv", "csv", 851_000, 1290, 5, COL_DISPENSE, "valid", OK, iso(2026, 9, 8, 9)),
   file("harborview_weekly_0915.csv", "csv", 903_000, 1388, 5, COL_DISPENSE, "valid", OK, iso(2026, 9, 15, 9)),
+  // Meridian Care · North Point Rx
+  file("northpoint_weekly_0728.csv", "csv", 780_000, 1210, 5, COL_DISPENSE, "valid", OK, iso(2026, 7, 29, 8, 30)),
+  file("semaglutide_dispensing_0826.xlsx", "xlsx", 1_640_000, 2240, 6, COL_WITH_PATIENT, "warning", WARN_LOT, iso(2026, 8, 26, 10, 45)),
+  file("northpoint_weekly_0908.csv", "csv", 812_000, 1265, 5, COL_DISPENSE, "valid", OK, iso(2026, 9, 9, 8, 15)),
 ];
 
 /** Build an ApplicationFile row from a FileSpec. */
@@ -581,6 +585,56 @@ const APPS: AppSeed[] = [
     fileRefs: [18],
     status: "pending",
   },
+
+  /* ---- Meridian Care · North Point Rx (ph-202) ----
+     North Point Rx is the pharmacy that owns the only pharmacy-worker account
+     in the fixture set (Angela Rowe, `u-w-5`), and it had no filings at all.
+     Logging in as her produced an empty applications list, so the one persona
+     the intake flow was built for had nothing to exercise it against. These
+     three give her a plausible history: one already delivered, one in review,
+     and one just submitted that a reviewer has not looked at yet. */
+  {
+    id: "AP-2026-2617",
+    title: "Weekly dispensing · Jul 28 window",
+    pharmacyId: "ph-202",
+    submittedBy: "u-w-5",
+    submittedAt: iso(2026, 7, 29, 8, 30),
+    fileRefs: [21],
+    status: "reported",
+    reviewedAt: iso(2026, 7, 30, 11),
+    reviewedBy: "u-mo-1",
+    reportedAt: iso(2026, 7, 31, 9, 15),
+    reportedBy: "u-sa-1",
+    reportData: {
+      "Layout grade": "Compliant",
+      "Records examined": "612",
+      "Data quality score": "98.4%",
+      "Critical deviations": "0",
+      "Late-dispense flags": "0",
+      "Batch coverage": "100.0%",
+      "Schema version": "RxFill 2.4",
+    },
+  },
+  {
+    id: "AP-2026-2618",
+    title: "Semaglutide dispensing log · August",
+    pharmacyId: "ph-202",
+    submittedBy: "u-w-5",
+    submittedAt: iso(2026, 8, 26, 10, 45),
+    fileRefs: [22],
+    status: "in_review",
+    reviewedAt: iso(2026, 8, 27, 9, 30),
+    reviewedBy: "u-mo-1",
+  },
+  {
+    id: "AP-2026-2619",
+    title: "Weekly dispensing · Sep 8 window",
+    pharmacyId: "ph-202",
+    submittedBy: "u-w-5",
+    submittedAt: iso(2026, 9, 9, 8, 15),
+    fileRefs: [23],
+    status: "pending",
+  },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -591,6 +645,9 @@ export const seedReports: Report[] = APPS.filter((a) => a.status === "reported")
   id: `RPT-${a.id}`,
   applicationId: a.id,
   status: "final",
+  // `manual` throughout: these are super-admin-attached documents, which is the
+  // only source the application can produce today.
+  source: "manual",
   resultData: a.reportData ?? {},
   generatedBy: a.reportedBy ?? "u-sa-1",
   generatedAt: a.reportedAt ?? a.submittedAt,
@@ -640,6 +697,12 @@ export const seedApplications = APPS.map((a) => {
   }
   return {
     id: a.id,
+    // The mock predates the split between a row's identity and its filing
+    // reference: it used the human-readable "AP-2026-####" string as the primary
+    // key. The database keeps a UUID in `id` and allocates `reference` from
+    // `application_reference_seq`, so the two are mirrored here to keep the
+    // in-memory seed shaped like the real rows. This mock is removed in Phase 4.
+    reference: a.id,
     title: a.title,
     pharmacyId: a.pharmacyId,
     associationId:

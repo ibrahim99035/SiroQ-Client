@@ -79,10 +79,19 @@ export function canReadUpload(
 }
 
 /**
- * May this user attach a file to this application?
+ * May this user attach a *file* to this application?
  *
- * A file is a report on a filing, so this is the `attachReport` permission,
- * scoped to the target filing's tenant. Super admins may file for any tenant.
+ * This used to test `can(user, "attachReport")`, on the reasoning that "a file
+ * is a report on a filing". That conflated two unrelated rights, and it had a
+ * real consequence: `attachReport` is the action that flips a filing to
+ * `reported`, so borrowing it to authorise a *pharmacy-side file write* meant a
+ * pharmacy worker could self-attach a report to her own filing and mark it
+ * reported — the terminal, delivered state — with Requis's own review output
+ * never having happened. `attachReport` is now super-admin only.
+ *
+ * The right modelled here is `createApplication`: adding evidence to a filing
+ * inside your own tenant is the same class of write as filing one, and both are
+ * pharmacy-side. Producing the review report is Requis-side.
  */
 export function canAttachToApplication(
   user: PermissionUser,
@@ -90,5 +99,5 @@ export function canAttachToApplication(
 ): boolean {
   if (user.status !== "active") return false;
   if (can(user, "viewAllData")) return true;
-  return can(user, "attachReport", toResource(application));
+  return can(user, "createApplication", toResource(application));
 }

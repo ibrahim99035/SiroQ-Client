@@ -67,14 +67,14 @@ export function PharmacyFormDialog({
       : { name: "", address: "", licenseNumber: "", associationId: "", status: "active" },
   });
 
-  const onSubmit = (values: FormValues) => {
+  const onSubmit = async (values: FormValues) => {
     if (!user) return;
     setError(null);
     try {
       if (pharmacy) {
-        updatePharmacy(pharmacy.id, values, user);
+        await updatePharmacy(pharmacy.id, values, user);
       } else {
-        createPharmacy(values, user);
+        await createPharmacy(values, user);
       }
       onSaved();
       onOpenChange(false);

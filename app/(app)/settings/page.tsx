@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { updateUser } from "@/lib/data";
+import { updateOwnProfile } from "@/lib/data";
+import { useSession } from "@/components/session-provider";
 import { useAssociations, useCurrentUser, usePharmacies } from "@/lib/store";
 import { ROLE_LABELS } from "@/lib/types";
 
@@ -21,9 +22,11 @@ type FormValues = z.infer<typeof schema>;
 
 export default function SettingsPage() {
   const actor = useCurrentUser();
+  const session = useSession();
   const associations = useAssociations();
   const pharmacies = usePharmacies();
   const [saved, setSaved] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -35,10 +38,23 @@ export default function SettingsPage() {
   const associationName = associations.find((a) => a.id === actor.associationId)?.name;
   const pharmacy = pharmacies.find((p) => p.id === actor.pharmacyId);
 
-  const onSubmit = (values: FormValues) => {
-    updateUser(actor.id, { name: values.name }, actor);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+  const onSubmit = async (values: FormValues) => {
+    // The rename is a real request now, so it can fail (offline, or an email
+    // clash on the self-service endpoint). Reporting success unconditionally
+    // would leave the form showing a name the server never accepted. This goes
+    // through /api/users/me, not /api/users/[id], which refuses self-writes.
+    setError(null);
+    try {
+      await updateOwnProfile({ name: values.name });
+      // The name shown in the account menu and on every permission-gated view
+      // comes from the session, not from this form, so it would keep showing the
+      // old name until a full page load.
+      session.reload();
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The name could not be saved.");
+    }
   };
 
   return (
@@ -65,9 +81,14 @@ export default function SettingsPage() {
               <Label>Email</Label>
               <Input value={actor.email} readOnly className="text-muted" />
               <p className="text-xs text-muted">
-                Email is your sign-in identifier and cannot be changed on this preview.
+                Email is your sign-in identifier and cannot be changed.
               </p>
             </div>
+            {error ? (
+              <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+                {error}
+              </p>
+            ) : null}
             <div className="flex items-center gap-3">
               <Button type="submit">Save profile</Button>
               {saved ? (
@@ -116,16 +137,9 @@ export default function SettingsPage() {
               <div>
                 <dt className="text-xs text-muted">Tenant context</dt>
                 <dd className="mt-0.5 text-[13px] text-muted">
-                  Use the identity switcher in the top bar to explore other roles. Switching
-                  re-scopes every list on this preview.
-                </dd>
-              </div>
-              <Separator />
-              <div>
-                <dt className="text-xs text-muted">Fault simulation</dt>
-                <dd className="mt-0.5 text-[13px] text-muted">
-                  A live fault toggle in the identity menu (top bar) forces error and empty states
-                  so you can review them.
+                  {actor.associationId
+                    ? `Scoped to your association. An administrator can change your role or tenant.`
+                    : `Scoped to the whole estate. An administrator can change your role or tenant.`}
                 </dd>
               </div>
             </dl>

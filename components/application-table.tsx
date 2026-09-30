@@ -94,7 +94,7 @@ export function ApplicationTable({
     if (q) {
       out = out.filter(
         (r) =>
-          r.application.id.toLowerCase().includes(q) ||
+          r.application.reference.toLowerCase().includes(q) ||
           r.application.title.toLowerCase().includes(q) ||
           r.pharmacy.name.toLowerCase().includes(q) ||
           r.submitter.name.toLowerCase().includes(q) ||
@@ -180,7 +180,7 @@ export function ApplicationTable({
                       href={`/applications/${row.application.id}`}
                       className="font-mono text-[12px] text-accent underline-offset-2 hover:underline"
                     >
-                      {row.application.id}
+                      {row.application.reference}
                     </Link>
                   </td>
                   <td className="max-w-[260px]">

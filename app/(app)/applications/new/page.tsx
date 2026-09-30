@@ -23,7 +23,6 @@ import { createApplication, fetchPharmaciesForUser } from "@/lib/data";
 import { dataScope } from "@/lib/permissions";
 import type { UploadCandidate } from "@/lib/files";
 import { useCurrentUser, useRevision } from "@/lib/store";
-import type { ApplicationFile } from "@/lib/types";
 import { fmtDate } from "@/lib/utils";
 
 const candidateSchema = z.object({
@@ -35,6 +34,11 @@ const candidateSchema = z.object({
   rowCount: z.number(),
   columnCount: z.number(),
   detectedColumns: z.array(z.string()),
+  // The staged bytes themselves. Optional because the seeded fixtures describe
+  // files that exist nowhere on disk, and because the `typeof File` guard keeps
+  // this module safe to evaluate during SSR, where a bare `File` reference would
+  // throw at import time on a runtime without the global.
+  file: z.custom<File>((value) => typeof File !== "undefined" && value instanceof File).optional(),
 });
 
 const schema = z.object({
@@ -70,24 +74,32 @@ export default function NewApplicationPage() {
   const worker = user ? dataScope(user) === "pharmacy" : false;
   const workerPharmacy = worker ? pharmacies.data?.[0] : null;
 
+  // A worker's pharmacy is shown read-only, so the <Select> that would normally
+  // set this field never renders and the value has to come from their scope.
+  // Without this the form submits `pharmacyId: ""`, zod rejects it, and — since
+  // the field's error message also only renders in the non-worker branch — the
+  // submit button simply does nothing, with no explanation anywhere.
+  React.useEffect(() => {
+    if (worker && workerPharmacy) {
+      form.setValue("pharmacyId", workerPharmacy.pharmacy.id, { shouldValidate: true });
+    }
+  }, [worker, workerPharmacy, form]);
+
   const onSubmit = async (values: FormValues) => {
     if (!user) return;
     setBusy(true);
     setSubmitError(null);
     try {
-      const files: ApplicationFile[] = values.files.map((c) => ({
-        id: `${c.fileName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        filename: c.fileName,
-        sizeBytes: c.sizeBytes,
-        kind: c.kind!,
-        rowCount: c.rowCount,
-        columnCount: c.columnCount,
-        detectedColumns: c.detectedColumns,
-        validationState: c.state,
-        validationReason: c.reason,
-        uploadedAt: new Date().toISOString(),
-      }));
-      const application = createApplication(
+      // The real `File` handles, not the staged metadata. Row counts, byte
+      // totals and validation shown on this form come from the server after the
+      // upload, so nothing derived here is persisted.
+      const files = values.files
+        .map((candidate) => candidate.file)
+        .filter((file): file is File => file instanceof File);
+      if (files.length !== values.files.length) {
+        throw new Error("One of the staged files could not be read. Please add it again.");
+      }
+      const application = await createApplication(
         { title: values.title.trim(), pharmacyId: values.pharmacyId, files },
         user,
       );
@@ -109,7 +121,7 @@ export default function NewApplicationPage() {
       <PageHeading
         eyebrow="Intake"
         title="New filing"
-        description="Stage one or more dispensing files. Each file is checked for type and a simulated schema pass before it enters the ledger."
+        description="Stage one or more dispensing files. The file type is checked here; the contents are validated on the server once the bytes are stored."
       />
 
       <div className="mt-6">
@@ -157,13 +169,16 @@ export default function NewApplicationPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {form.formState.errors.pharmacyId ? (
-                      <p className="text-xs text-[#7a2e26]">
-                        {form.formState.errors.pharmacyId.message}
-                      </p>
-                    ) : null}
                   </>
                 )}
+                {/* Rendered for workers too: the field is read-only for them, so
+                    this is the only place a failure of the locked value can
+                    surface. */}
+                {form.formState.errors.pharmacyId ? (
+                  <p className="text-xs text-[#7a2e26]">
+                    {form.formState.errors.pharmacyId.message}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1.5">
@@ -204,8 +219,8 @@ export default function NewApplicationPage() {
                   Anything else is held back with a rejection line.
                 </li>
                 <li>
-                  Validation is simulated on the client and recorded per file in the ledger as
-                  passed, advisory, or failed.
+                  Contents are validated on the server from the stored bytes, then recorded per
+                  file in the ledger as passed, advisory, or failed.
                 </li>
                 <li>
                   Today is {fmtDate(new Date().toISOString())}. Filings keep a full audit trail from

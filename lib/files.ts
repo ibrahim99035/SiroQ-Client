@@ -11,6 +11,20 @@ export interface UploadCandidate {
   rowCount: number;
   columnCount: number;
   detectedColumns: string[];
+  /**
+   * The real handle from the file input or drop event.
+   *
+   * Everything else on this object is *derived metadata* — including the row and
+   * column counts, which `simulateFileValidation` invents from the file name.
+   * Those numbers are shown before the user submits, and they are not true. The
+   * server re-derives size, checksum and schema results from the stored bytes in
+   * `POST /api/uploads/[id]/complete`; only `file` is something the browser
+   * alone can supply, so it is the one field worth carrying through.
+   *
+   * Optional because the seeded fixtures describe files that do not exist on the
+   * user's disk.
+   */
+  file?: File;
 }
 
 function hashStr(value: string): number {
@@ -153,7 +167,11 @@ export function simulateFileValidation(fileName: string, sizeBytes: number): Omi
   };
 }
 
-export function validateUpload(fileName: string, sizeBytes: number): UploadCandidate {
+export function validateUpload(
+  fileName: string,
+  sizeBytes: number,
+  file?: File,
+): UploadCandidate {
   const kind = classifyFileKind(fileName);
   if (!kind) {
     return {
@@ -165,7 +183,8 @@ export function validateUpload(fileName: string, sizeBytes: number): UploadCandi
       rowCount: 0,
       columnCount: 0,
       detectedColumns: [],
+      file,
     };
   }
-  return { ...simulateFileValidation(fileName, sizeBytes), kind };
+  return { ...simulateFileValidation(fileName, sizeBytes), kind, file };
 }

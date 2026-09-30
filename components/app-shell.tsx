@@ -3,7 +3,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   Building2,
-  Check,
   ChevronDown,
   LayoutDashboard,
   LogOut,
@@ -15,10 +14,12 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
-import { cn, initials } from "@/lib/utils";
-import { useAppStore, useCurrentUser } from "@/lib/store";
+import { initials } from "@/lib/utils";
+import { useCurrentUser } from "@/lib/store";
+import { useSession } from "@/components/session-provider";
+import { apiSend, type ApiError } from "@/lib/client-api";
 import { can } from "@/lib/permissions";
 import { ROLE_LABELS, type User } from "@/lib/types";
 import {
@@ -102,25 +103,45 @@ function NavLink({ item, pathname, onNavigate }: { item: NavItem; pathname: stri
 }
 
 /* ---------------------------------------------------------------------- */
-/* Identity switcher                                                      */
+/* Account menu                                                            */
 /* ---------------------------------------------------------------------- */
 
-function UserSwitcher() {
+/**
+ * The signed-in identity, and the way out of it.
+ *
+ * This used to be a "Viewing as — switch identity" menu backed by the mock
+ * store: it listed every seeded user and swapped a client-side pointer, so you
+ * could impersonate any role, plus a "simulate system fault" toggle that only
+ * affected the in-memory store. None of that touched a real session, so it is
+ * gone rather than cosmetically relabelled — an identity switcher that does not
+ * change the identity is worse than no switcher. Scope now comes from the
+ * session cookie, and signing out revokes the session server-side.
+ */
+function AccountMenu() {
   const user = useCurrentUser();
-  const users = useAppStore((s) => s.users);
-  const setCurrentUser = useAppStore((s) => s.setCurrentUser);
-  const simulateFault = useAppStore((s) => s.simulateFault);
-  const setSimulateFault = useAppStore((s) => s.setSimulateFault);
+  const router = useRouter();
+  const [signingOut, setSigningOut] = React.useState(false);
   if (!user) return null;
 
-  const active = users.filter((u) => u.status === "active");
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      await apiSend("/api/auth/logout", "POST");
+    } catch {
+      // A failed revoke must not strand the user in an authenticated-looking
+      // shell, so continue to the sign-in page either way and let the server
+      // decide on the next request.
+    }
+    router.replace("/login");
+    router.refresh();
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           className="flex items-center gap-2 rounded-[10px] border border-hairline bg-paper-raised px-2.5 py-1.5 text-left shadow-soft transition-colors hover:border-accent/50 hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-accent"
-          aria-label="Viewing as — switch identity"
+          aria-label={`Account menu for ${user.name}`}
         >
           <span
             className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink text-[10px] font-medium text-paper-raised"
@@ -139,46 +160,28 @@ function UserSwitcher() {
           <ChevronDown className="h-4 w-4 text-muted" aria-hidden="true" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[300px]">
-        <DropdownMenuLabel>Viewing as — switch identity</DropdownMenuLabel>
-        {active.map((u) => (
-          <DropdownMenuItem
-            key={u.id}
-            onSelect={() => setCurrentUser(u.id)}
-            className="flex items-start gap-2"
-          >
-            <Check
-              className={cn("mt-0.5 h-4 w-4 shrink-0", u.id === user.id ? "text-accent" : "opacity-0")}
-              aria-hidden="true"
-            />
-            <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium text-ink">{u.name}</span>
-              <span className="block font-mono text-[10px] text-muted">{ROLE_LABELS[u.role]}</span>
-              {u.associationId || u.pharmacyId ? (
-                <span className="mt-0.5 block truncate font-mono text-[10px] text-muted">
-                  {u.pharmacyId ?? u.associationId}
-                </span>
-              ) : null}
-            </span>
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent align="end" className="w-[260px]">
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span className="truncate text-[13px] font-medium text-ink">{user.name}</span>
+          <span className="truncate font-mono text-[10px] font-normal text-muted">{user.email}</span>
+          <span className="font-mono text-[10px] font-normal text-muted">{ROLE_LABELS[user.role]}</span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => router.push("/settings")}>
+          <Settings className="h-4 w-4" aria-hidden="true" />
+          Account settings
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={(event) => {
             event.preventDefault();
-            setSimulateFault(!simulateFault);
+            void signOut();
           }}
-          className="flex items-center justify-between"
+          disabled={signingOut}
+          className="text-destructive"
         >
-          <span>Simulate system fault</span>
-          <span className="font-mono text-[10px]" role="switch" aria-checked={simulateFault}>
-            {simulateFault ? "on" : "off"}
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => setCurrentUser(null)} className="text-destructive">
           <LogOut className="h-4 w-4" aria-hidden="true" />
-          Sign out of demo session
+          {signingOut ? "Signing out…" : "Sign out"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -233,7 +236,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
       </button>
       <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">{topbarLabel(pathname)}</p>
       <div className="ml-auto">
-        <UserSwitcher />
+        <AccountMenu />
       </div>
     </header>
   );
@@ -253,10 +256,9 @@ function SignedOut() {
           </span>
           <span className="text-[15px] font-semibold text-ink">Requis</span>
         </div>
-        <h1 className="text-lg font-semibold text-ink">No active demo session</h1>
+        <h1 className="text-lg font-semibold text-ink">Your session has ended</h1>
         <p className="mt-2 text-sm text-muted">
-          The review workspace keeps a mock signed-in identity so every role can be previewed.
-          Sign in again, or continue to the public site.
+          Sign in again to pick up where you left off, or continue to the public site.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button asChild>
@@ -271,13 +273,53 @@ function SignedOut() {
   );
 }
 
+/** Placeholder shown while the session is being resolved, or if it cannot be read. */
+function SessionPending({ error }: { error: ApiError | null }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-card border border-hairline/80 bg-paper-raised p-8 shadow-lift">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="grid h-6 w-6 place-items-center rounded-stamp bg-accent" aria-hidden="true">
+            <span className="h-2 w-2 rounded-[2px] border-2 border-white" />
+          </span>
+          <span className="text-[15px] font-semibold text-ink">Requis</span>
+        </div>
+        {error ? (
+          <>
+            <h1 className="text-lg font-semibold text-ink">Could not load your session</h1>
+            <p className="mt-2 text-sm text-muted">{error.message}</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href="/login">Sign in</Link>
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h1 className="text-lg font-semibold text-ink">Loading your workspace</h1>
+            <p className="mt-2 text-sm text-muted">Checking your session.</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------------- */
 /* Shell                                                                   */
 /* ---------------------------------------------------------------------- */
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
+  const { status, error } = useSession();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+
+  // `/api/auth/me` is still in flight. Rendering <SignedOut /> here would flash
+  // a sign-in screen on every navigation and then swap it for the app, so the
+  // shell waits behind a neutral placeholder instead.
+  if (status === "loading" || status === "error") {
+    return <SessionPending error={status === "error" ? error : null} />;
+  }
 
   if (!user) return <SignedOut />;
 
@@ -293,9 +335,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="border-t border-hairline px-4 py-3">
           <p className="font-mono text-[10px] leading-relaxed text-muted">
-            Mock data layer
+            Live data
             <br />
-            pre-release preview
+            served from Neon
           </p>
         </div>
       </aside>

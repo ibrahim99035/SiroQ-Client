@@ -7,36 +7,42 @@ export default function TermsPage() {
 
       <div className="mt-10 space-y-10 text-[15px] leading-relaxed text-ink/90">
         <section>
-          <h2 className="text-lg font-semibold text-ink">1. Purpose of this preview</h2>
+          <h2 className="text-lg font-semibold text-ink">1. Nature of the service</h2>
           <p className="mt-3 text-muted">
-            Requis is an interactive product preview built against a mock data layer. There is no
-            live backend, no database, and no processing of real dispensing records. Anything you
-            stage, review, or report persists only in the memory of your current session.
+            Requis is a multi-tenant review workspace for pharmacy application filings. It runs
+            against a live backend: accounts, organisations, pharmacies, filings, uploaded files, and
+            report output are stored in a hosted database and private object storage, and persist
+            beyond your browser session.
           </p>
         </section>
 
         <section>
           <h2 className="text-lg font-semibold text-ink">2. Use of the workspace</h2>
           <p className="mt-3 text-muted">
-            You may explore every seeded role and workflow for evaluation purposes. You agree not
-            to upload files containing real patient health information, since the preview performs
-            no real parsing or protection of that data.
+            You are responsible for the material you submit through your account. Do not upload
+            dispensing records that contain patient health information unless your organisation has
+            established a lawful basis and appropriate safeguards for doing so; the service stores
+            and authenticates access to files but does not de-identify or redact their contents.
+            Access is limited to the organisation you are assigned to, and you must not attempt to
+            reach another organisation&rsquo;s records.
           </p>
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold text-ink">3. Simulated data and reports</h2>
+          <h2 className="text-lg font-semibold text-ink">3. Reports and analysis output</h2>
           <p className="mt-3 text-muted">
-            Reports attached in the preview are generated deterministically from ledger metadata.
-            They are illustrative and must not be relied upon for regulatory purposes.
+            A report records the output of an analysis run produced outside this service and attached
+            to a filing by an administrator. Reports are attached to a filing and preserved for the
+            audit trail; they are not regenerated on demand and are not recalculated if the source
+            data changes.
           </p>
         </section>
 
         <section>
           <h2 className="text-lg font-semibold text-ink">4. No warranty</h2>
           <p className="mt-3 text-muted">
-            The preview is provided “as is” without warranties of any kind. The operators accept
-            no liability for decisions made on the basis of the simulated output.
+            The service is provided “as is” without warranties of any kind. The operators accept no
+            liability for decisions made on the basis of a report or any other output.
           </p>
         </section>
 

@@ -105,7 +105,7 @@ export default function PricingPage() {
           <p className="mt-2 max-w-2xl text-[13.5px] leading-relaxed text-muted">
             Billing is explicitly out of scope for this build. The three plans above are present
             so the public pages read as a complete product, but no payment flow exists behind
-            them. The workspace itself is free to preview with the seeded identities.
+            them. The workspace itself is free to use.
           </p>
         </aside>
       </section>

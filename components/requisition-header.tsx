@@ -17,7 +17,13 @@ export function RequisitionHeader({ row }: { row: ApplicationRow }) {
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-paper-raised/60">
             Filing record
           </p>
-          <p className="truncate font-mono text-sm text-paper-raised">{application.id}</p>
+          {/* The filing reference, not the row's UUID. `id` is database
+              identity; the reference is what the pharmacy quotes, and the mock
+              layer used the reference as the key so this slot used to read
+              "AP-2026-2601" without appearing to change. */}
+          <p className="truncate font-mono text-sm text-paper-raised">
+            {application.reference}
+          </p>
         </div>
         <StatusBadge status={application.status} />
       </div>

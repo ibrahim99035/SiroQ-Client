@@ -228,7 +228,15 @@ model Application {
   /// Human-readable filing reference shown throughout the UI (e.g. AP-2026-2601).
   /// Kept separate from the UUID primary key so database identity never leaks
   /// into the interface.
-  reference String @unique
+  ///
+  /// Allocated by `application_reference_seq` (see
+  /// `prisma/migrations/20260930_application_reference_seq`). Declared
+  /// `dbgenerated` so the database stays the only allocator: the client omits
+  /// this field entirely, which is what stops two concurrent requests inventing
+  /// the same reference and colliding on the unique index. Prisma still returns
+  /// the generated value from the insert, so callers read it back in the same
+  /// round trip rather than re-querying.
+  reference String @unique @default(dbgenerated("('AP-2026-'::text || lpad((nextval('application_reference_seq'::text))::text, 4, '0'::text))"))
 
   pharmacyId String @map("pharmacy_id") @db.Uuid
   /// Denormalised from the pharmacy so tenant scoping needs no join.

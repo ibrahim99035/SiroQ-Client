@@ -44,7 +44,7 @@ export default function AdminPharmaciesPage() {
       <PageHeading
         eyebrow="Administration"
         title="Pharmacies"
-        description="Sites that own filings. Deleting a pharmacy removes its filings and reports and clears worker assignments."
+        description="Sites that own filings. Deletion is refused while a site still has filings, since it would cascade — review its filings first."
         rule="warm"
       >
         <Button onClick={() => setCreating(true)}>
@@ -146,16 +146,15 @@ export default function AdminPharmaciesPage() {
         title={`Delete ${deleting?.pharmacy.name ?? "pharmacy"}?`}
         description={
           <>
-            This removes the pharmacy, its{" "}
-            <strong className="font-mono text-[12px]">{deleting?.applicationCount ?? 0}</strong>{" "}
-            filings and their reports, and clears the pharmacy assignment from its users. This
-            cannot be undone.
+            Deleting is only possible while the pharmacy has no filings. This one still has{" "}
+            <strong className="font-mono text-[12px]">{deleting?.applicationCount ?? 0}</strong>
+            , so the request will be refused.
           </>
         }
         confirmLabel="Delete pharmacy"
         onConfirm={async () => {
           if (!deleting || !user) return;
-          deletePharmacy(deleting.pharmacy.id, user);
+          await deletePharmacy(deleting.pharmacy.id, user);
         }}
       />
     </PermissionGate>

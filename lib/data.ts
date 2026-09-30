@@ -1,21 +1,20 @@
 "use client";
 
 import { format, startOfWeek, subWeeks } from "date-fns";
+import { ApiError, apiFetch, apiSend } from "./client-api";
 import { markMutated, useAppStore } from "./store";
 import {
   PermissionError,
-  requirePermission,
   can,
   type PermissionResource,
 } from "./permissions";
 import type {
   Application,
-  ApplicationFile,
   ApplicationStatus,
   Pharmacy,
   PharmacyAssociation,
   Report,
-  ReportResultData,
+  
   User,
 } from "./types";
 
@@ -63,14 +62,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function hashStr(value: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
 
 function nextIdWithPrefix(prefix: string, list: { id: string }[]): string {
   let max = 0;
@@ -110,6 +101,90 @@ export interface AssociationRow {
 export interface WeeklyPoint {
   week: string;
   submitted: number;
+}
+
+/* API response shapes                                                     */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * What the routes actually return.
+ *
+ * Declared separately from the `User`/`Pharmacy` client types because they are
+ * not the same thing: the API sends `null` for "no tenant", while the client
+ * type models absence as `undefined` (it predates the database). Mapping
+ * between the two in one place keeps that asymmetry from leaking into `===`
+ * comparisons scattered across components — `user.associationId === id` is
+ * false for both `null` and `undefined`, but a null reaching a `<select>` value
+ * is a warning and a null in a text field renders the word "null".
+ */
+interface ApiUser {
+  id: string;
+  email: string;
+  name: string;
+  role: User["role"];
+  status: User["status"];
+  associationId: string | null;
+  pharmacyId: string | null;
+  createdAt: string;
+}
+
+interface ApiAssociation {
+  id: string;
+  name: string;
+  region: string;
+  gmpCertificateId: string;
+  status: PharmacyAssociation["status"];
+  createdAt: string;
+  pharmacyCount: number;
+  applicationCount: number;
+}
+
+interface ApiPharmacyRow {
+  id: string;
+  associationId: string;
+  name: string;
+  address: string;
+  licenseNumber: string;
+  status: Pharmacy["status"];
+  createdAt: string;
+  association: ApiAssociation;
+  applicationCount: number;
+}
+
+function apiUserToUser(row: ApiUser): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    status: row.status,
+    associationId: row.associationId ?? undefined,
+    pharmacyId: row.pharmacyId ?? undefined,
+    createdAt: row.createdAt,
+  };
+}
+
+function apiAssociation(row: ApiAssociation): PharmacyAssociation {
+  return {
+    id: row.id,
+    name: row.name,
+    region: row.region,
+    gmpCertificateId: row.gmpCertificateId,
+    status: row.status,
+    createdAt: row.createdAt,
+  };
+}
+
+function apiPharmacy(row: ApiPharmacyRow): Pharmacy {
+  return {
+    id: row.id,
+    associationId: row.associationId,
+    name: row.name,
+    address: row.address,
+    licenseNumber: row.licenseNumber,
+    status: row.status,
+    createdAt: row.createdAt,
+  };
 }
 
 export interface DashboardStats {
@@ -161,35 +236,6 @@ function getApplication(id: string): Application {
   return application;
 }
 
-function hydrate(application: Application): ApplicationRow {
-  const state = useAppStore.getState();
-  const pharmacy = state.pharmacies.find((p) => p.id === application.pharmacyId);
-  const association = state.associations.find((a) => a.id === application.associationId);
-  const submitter = state.users.find((u) => u.id === application.submittedBy);
-  const report = application.reportId
-    ? (state.reports.find((r) => r.id === application.reportId) ?? null)
-    : null;
-  return {
-    application,
-    pharmacy: pharmacy ?? (fallbackPharmacy(application.pharmacyId) as Pharmacy),
-    association: association ?? (fallbackAssociation(application.associationId) as PharmacyAssociation),
-    submitter: submitter ?? (fallbackUser(application.submittedBy) as User),
-    report,
-    totalRows: application.files.reduce((sum, f) => sum + f.rowCount, 0),
-    totalBytes: application.files.reduce((sum, f) => sum + f.sizeBytes, 0),
-  };
-}
-
-function fallbackPharmacy(id: string): Pharmacy {
-  return { id, associationId: "", name: "Removed pharmacy", address: "—", licenseNumber: "—", status: "suspended", createdAt: nowIso() };
-}
-function fallbackAssociation(id: string): PharmacyAssociation {
-  return { id, name: "Removed association", region: "—", gmpCertificateId: "—", status: "suspended", createdAt: nowIso() };
-}
-function fallbackUser(id: string): User {
-  return { id, email: "—", name: "Removed user", role: "moderator", status: "disabled", createdAt: nowIso() };
-}
-
 /** Applications visible to `user`, newest first, in application scope only. */
 export function scopedApplications(user: User): Application[] {
   const all = useAppStore.getState().applications;
@@ -215,86 +261,113 @@ export function scopedApplications(user: User): Application[] {
 /* Queries                                                                */
 /* ---------------------------------------------------------------------- */
 
-export async function fetchApplicationsForUser(user: User): Promise<ApplicationRow[]> {
-  faultGuard();
-  await delay();
-  faultGuard();
-  return scopedApplications(user).map(hydrate);
+/**
+ * The filing row as the routes return it.
+ *
+ * Identical to `ApplicationRow`, but the routes send `null` for "no tenant" on
+ * the submitter while the client type models absence as `undefined`, and they
+ * send `undefined` rather than omitting `reportId`. The two are mapped in one
+ * place (`apiApplicationRow`) so that asymmetry cannot leak into component
+ * comparisons.
+ */
+type ApiApplicationRow = Omit<ApplicationRow, "submitter"> & {
+  submitter: ApiUser;
+  application: ApplicationRow["application"] & { reportId?: string | null };
+};
+
+function apiApplicationRow(row: ApiApplicationRow): ApplicationRow {
+  return {
+    ...row,
+    submitter: apiUserToUser(row.submitter),
+    application: {
+      ...row.application,
+      // `null` (API) -> `undefined` (client): `reportId && …` must not treat a
+      // JSON null as a present-but-empty id.
+      reportId: row.application.reportId ?? undefined,
+    },
+  };
+}
+
+export async function fetchApplicationsForUser(_user: User): Promise<ApplicationRow[]> {
+  const body = await apiFetch<{ ok: true; applications: ApiApplicationRow[] }>(
+    "/api/applications",
+  );
+  return body.applications.map(apiApplicationRow);
 }
 
 export async function fetchApplicationForUser(
-  user: User,
+  _user: User,
   applicationId: string,
 ): Promise<ApplicationRow> {
-  faultGuard();
-  await delay();
-  faultGuard();
-  const application = getApplication(applicationId);
-  enforceApplicationScope(user, application);
-  return hydrate(application);
+  const body = await apiFetch<ApiApplicationRow>(`/api/applications/${applicationId}`);
+  return apiApplicationRow(body);
 }
 
-export async function fetchPharmaciesForUser(user: User): Promise<PharmacyRow[]> {
-  faultGuard();
-  await delay();
-  faultGuard();
-  const state = useAppStore.getState();
-  const appCount = (pharmacyId: string, scopeIds: string[]) =>
-    state.applications.filter(
-      (a) => a.pharmacyId === pharmacyId && scopeIds.includes(a.pharmacyId),
-    ).length;
-
-  let ids: string[];
-  switch (user.role) {
-    case "super_admin":
-    case "moderator":
-      ids = state.pharmacies.map((p) => p.id);
-      break;
-    case "pharmacy_association_admin":
-      ids = state.pharmacies
-        .filter((p) => p.associationId === user.associationId)
-        .map((p) => p.id);
-      break;
-    case "pharmacy_worker":
-      ids = user.pharmacyId ? [user.pharmacyId] : [];
-      break;
-  }
-  return state.pharmacies
-    .filter((p) => ids.includes(p.id))
-    .map((p) => ({
-      pharmacy: p,
-      association: state.associations.find((a) => a.id === p.associationId) ?? fallbackAssociation(p.associationId),
-      applicationCount: appCount(p.id, ids),
-    }));
+/**
+ * Reads are now real API calls.
+ *
+ * These three functions used to read the in-memory Zustand store and enforce
+ * scope in the browser, which meant the *browser* was the thing deciding what a
+ * user could see. The server re-derives scope from the session on every request
+ * (`lib/scopes.ts`), so these now simply fetch and map — the `user` argument is
+ * retained only so the 14 existing call sites keep their signatures. Client-side
+ * filtering is not relied on for security; it would only ever narrow what the
+ * server already allowed.
+ */
+export async function fetchPharmaciesForUser(_user: User): Promise<PharmacyRow[]> {
+  const body = await apiFetch<{ ok: true; pharmacies: ApiPharmacyRow[] }>("/api/pharmacies");
+  return body.pharmacies.map((row) => ({
+    pharmacy: {
+      id: row.id,
+      associationId: row.associationId,
+      name: row.name,
+      address: row.address,
+      licenseNumber: row.licenseNumber,
+      status: row.status,
+      createdAt: row.createdAt,
+    },
+    association: {
+      id: row.association.id,
+      name: row.association.name,
+      region: row.association.region,
+      gmpCertificateId: row.association.gmpCertificateId,
+      status: row.association.status,
+      createdAt: row.association.createdAt,
+    },
+    applicationCount: row.applicationCount,
+  }));
 }
 
-export async function fetchAssociationsForUser(user: User): Promise<AssociationRow[]> {
-  faultGuard();
-  await delay();
-  faultGuard();
-  const state = useAppStore.getState();
-  const scope = user.role === "pharmacy_association_admin" ? user.associationId : undefined;
-  const associations = state.associations.filter((a) => !scope || a.id === scope);
-  return associations.map((association) => {
-    const pharmacies = state.pharmacies.filter((p) => p.associationId === association.id);
-    const applicationCount = state.applications.filter(
-      (a) => a.associationId === association.id,
-    ).length;
-    return { association, pharmacyCount: pharmacies.length, applicationCount };
-  });
+export async function fetchAssociationsForUser(_user: User): Promise<AssociationRow[]> {
+  const body = await apiFetch<{ ok: true; associations: ApiAssociation[] }>("/api/associations");
+  return body.associations.map((row) => ({
+    association: {
+      id: row.id,
+      name: row.name,
+      region: row.region,
+      gmpCertificateId: row.gmpCertificateId,
+      status: row.status,
+      createdAt: row.createdAt,
+    },
+    pharmacyCount: row.pharmacyCount,
+    applicationCount: row.applicationCount,
+  }));
 }
 
-export async function fetchUsersForUser(user: User): Promise<User[]> {
-  faultGuard();
-  await delay();
-  faultGuard();
-  if (!can(user, "manageUsers")) return [];
-  const state = useAppStore.getState();
-  const visible =
-    user.role === "super_admin"
-      ? state.users
-      : state.users.filter((u) => u.associationId === user.associationId);
-  return [...visible].sort((a, b) => a.name.localeCompare(b.name));
+export async function fetchUsersForUser(_user: User): Promise<User[]> {
+  const body = await apiFetch<{ ok: true; users: ApiUser[] }>("/api/users");
+  return body.users.map((row) => ({
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    status: row.status,
+    // The API returns null for "no tenant"; the client type models absence as
+    // `undefined`, so normalise rather than leaking nulls into `=== ` checks.
+    associationId: row.associationId ?? undefined,
+    pharmacyId: row.pharmacyId ?? undefined,
+    createdAt: row.createdAt,
+  }));
 }
 
 export async function fetchReportForApplication(
@@ -381,147 +454,204 @@ function scopeLabelFor(user: User): string {
 /* Mutations                                                               */
 /* ---------------------------------------------------------------------- */
 
-function assertUserIsCurrent(user: User): void {
-  if (useAppStore.getState().currentUserId !== user.id) {
-    throw new PermissionError("The acting identity has changed; please retry.", user, "viewAllData");
-  }
-}
-
 export interface CreateApplicationInput {
   title: string;
   pharmacyId: string;
-  files: ApplicationFile[];
+  files: File[];
 }
 
-export function createApplication(input: CreateApplicationInput, user: User): Application {
-  assertUserIsCurrent(user);
-  requirePermission(user, "createApplication", { pharmacyId: input.pharmacyId });
-  const state = useAppStore.getState();
-  const pharmacy = state.pharmacies.find((p) => p.id === input.pharmacyId);
-  if (!pharmacy) {
-    throw new DataError("not_found", `Pharmacy "${input.pharmacyId}" does not exist in the dataset.`);
+/**
+ * One file: reserve a slot, send the bytes, then let the server verify them.
+ *
+ * The three steps are not collapsible. `POST /api/uploads` reserves a key and
+ * hands back a presigned PUT, so the bytes travel straight to object storage
+ * instead of through this Next.js process (a 4 MB body would otherwise run into
+ * Vercel's request limit). `POST /api/uploads/[id]/complete` then reads the
+ * object back and derives size, checksum and schema validation from it — nothing
+ * the browser claimed is stored.
+ *
+ * Both reserve modes are handled. `presigned` is the Neon driver: the browser
+ * PUTs to object storage directly. `direct` is the local filesystem driver,
+ * which has nowhere to presign to, so the bytes ride along in the completion
+ * call instead.
+ *
+ * The slot is left `expired`/`failed` server-side if a step throws, so a partial
+ * upload cannot masquerade as a completed one.
+ */
+async function uploadFileForApplication(file: File, applicationId: string): Promise<void> {
+  const reserved = await apiSend<{
+    ok: true;
+    uploadId: string;
+    mode: "direct" | "presigned";
+    url?: string;
+    headers?: Record<string, string>;
+    completeUrl: string;
+  }>("/api/uploads", "POST", {
+    fileName: file.name,
+    declaredBytes: file.size,
+    mimeType: file.type || undefined,
+    applicationId,
+  });
+
+  if (reserved.mode === "presigned") {
+    if (!reserved.url) {
+      throw new ApiError(
+        "server_error",
+        `${file.name} could not be uploaded. Please try again.`,
+        0,
+      );
+    }
+    const put = await fetch(reserved.url, {
+      method: "PUT",
+      headers: reserved.headers ?? {},
+      body: file,
+    });
+    if (!put.ok) {
+      throw new ApiError(
+        "server_error",
+        `${file.name} could not be uploaded to storage (${put.status}). Please try again.`,
+        put.status,
+      );
+    }
+    await apiSend(reserved.completeUrl, "POST", { applicationId });
+    return;
   }
-  if (
-    user.role === "pharmacy_association_admin" &&
-    pharmacy.associationId !== user.associationId
-  ) {
-    throw new PermissionError(
-      `${user.name} can only submit filings for pharmacies in their own association.`,
-      user,
-      "createApplication",
-    );
+
+  await apiSend(reserved.completeUrl, "POST", {
+    applicationId,
+    dataBase64: await fileToBase64(file),
+  });
+}
+
+/**
+ * `File` → base64, for the local driver only.
+ *
+ * `btoa` takes a binary string, and the usual `String.fromCharCode(...bytes)`
+ * spread blows the argument limit on a file of any real size, so the bytes are
+ * concatenated in chunks.
+ */
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const CHUNK = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
   }
-  if (user.role === "pharmacy_worker" && pharmacy.id !== user.pharmacyId) {
-    throw new PermissionError(
-      `${user.name} can only submit filings for their own pharmacy.`,
-      user,
-      "createApplication",
-    );
+  return btoa(binary);
+}
+
+/**
+ * Creates a filing, then uploads each file against the new id.
+ *
+ * The order is not incidental. The server allocates the `reference` on insert
+ * and validates a file only once its bytes are in storage — `/api/uploads/[id]/
+ * complete` re-derives size, checksum and schema results from the stored object
+ * and writes the `ApplicationFile`. So a file cannot be attached to a filing
+ * that does not exist yet, and the returned row's `files` is whatever the server
+ * actually accepted, not what the browser claimed.
+ *
+ * `input.files` therefore carries the staged `File` handles, not a
+ * client-authored `ApplicationFile`: everything the UI shows about a file now
+ * comes back from the server.
+ */
+export async function createApplication(
+  input: CreateApplicationInput,
+  _user: User,
+): Promise<Application> {
+  const created = await apiSend<ApiApplicationRow>(
+    "/api/applications",
+    "POST",
+    { title: input.title, pharmacyId: input.pharmacyId },
+  );
+  const application = apiApplicationRow(created).application;
+
+  for (const file of input.files) {
+    await uploadFileForApplication(file, application.id);
   }
-  const id = nextIdWithPrefix("AP-2026-", state.applications);
-  const stamped = nowIso();
-  const application: Application = {
-    id,
-    title: input.title,
-    pharmacyId: pharmacy.id,
-    associationId: pharmacy.associationId,
-    submittedBy: user.id,
-    files: input.files,
-    status: "pending",
-    submittedAt: stamped,
-    updatedAt: stamped,
-    history: [
-      {
-        to: "pending",
-        changedById: user.id,
-        changedAt: stamped,
-        note: `Received ${input.files.length} file(s) through the intake form (${input.files.length} ledger row(s)).`,
-      },
-    ],
-  };
-  useAppStore.setState({ applications: [application, ...state.applications] });
-  markMutated();
-  return application;
+
+  // Re-read rather than patching the local copy: the server is now the only
+  // authority on what a filing contains, and a partially failed upload must not
+  // leave the page showing files the server rejected.
+  const refreshed = await apiFetch<ApiApplicationRow>(`/api/applications/${application.id}`);
+  return apiApplicationRow(refreshed).application;
 }
 
 export interface AttachReportInput {
-  affirmIssues?: string;
+  /**
+   * The report document as text. The server parses it, so `resultData` and
+   * `rawData` are always derived from the same bytes rather than from whatever
+   * a client-managed object claimed.
+   */
+  document: string;
+  status?: "draft" | "final";
+  note?: string;
 }
 
-export function attachReport(applicationId: string, user: User, input?: AttachReportInput): Report {
-  assertUserIsCurrent(user);
-  requirePermission(user, "attachReport");
-  const state = useAppStore.getState();
-  const application = getApplication(applicationId);
-  enforceApplicationScope(user, application);
-
-  const report = synthesizeReport(application, user);
-  const stamped = nowIso();
-  const historyEntry = {
-    to: "reported" as ApplicationStatus,
-    changedById: user.id,
-    changedAt: stamped,
-    note:
-      input?.affirmIssues?.trim() ||
-      "Report generated from review findings and attached to the filing.",
-  };
-
-  const applications = state.applications.map((a) =>
-    a.id === applicationId
-      ? {
-          ...a,
-          status: "reported" as ApplicationStatus,
-          updatedAt: stamped,
-          reportId: report.id,
-          history: [...a.history.filter((e) => e.to !== "reported"), historyEntry],
-        }
-      : a,
+/**
+ * Attaches a report to a filing and advances it to `reported`.
+ *
+ * The server writes the `Report` row, the status change and the `StatusEvent`
+ * in one transaction, so there is no state in which a filing is stamped
+ * `reported` without an audit row, or carries a report the ledger never
+ * announced.
+ *
+ * Returns the filing's refreshed row rather than just the `Report`, because the
+ * caller's next act is to re-render the detail page and the status change is
+ * part of what it needs to show.
+ */
+export async function attachReport(
+  applicationId: string,
+  _user: User,
+  input: AttachReportInput,
+): Promise<Application> {
+  const body = await apiSend<ApiApplicationRow>(
+    `/api/applications/${applicationId}/report`,
+    "POST",
+    { document: input.document, status: input.status, note: input.note },
   );
-  const reports = [
-    ...state.reports.filter((r) => r.id !== report.id),
-    report,
-  ];
-  useAppStore.setState({ applications, reports });
-  markMutated();
-  return report;
+  return apiApplicationRow(body).application;
 }
 
-export function updateApplicationStatus(
+/**
+ * Fetches a report's stored document. Called only when the panel's raw toggle
+ * is opened, because the document is capped at 4 MB and is deliberately absent
+ * from the application row.
+ */
+export async function fetchReportRaw(
+  reportId: string,
+  _user: User,
+): Promise<{ applicationId: string; rawData: string }> {
+  const body = await apiFetch<{ ok: true; applicationId: string; rawData: string }>(
+    `/api/reports/${reportId}/raw`,
+  );
+  return { applicationId: body.applicationId, rawData: body.rawData };
+}
+
+/**
+ * Moves a filing to a new status.
+ *
+ * The server writes the status change and its `StatusEvent` in one transaction,
+ * so the audit trail cannot drift from the row. Two consequences for callers:
+ *
+ *   - it is async now, and the returned application is the server's version;
+ *   - a same-status request is a no-op, not an error, so a retried or
+ *     double-clicked transition cannot duplicate an audit row.
+ *
+ * The `user` argument is unused for the same reason as the other Phase 1 and 2
+ * mutations: scope and permission are re-derived from the session server-side.
+ */
+export async function updateApplicationStatus(
   applicationId: string,
   to: ApplicationStatus,
-  user: User,
+  _user: User,
   note?: string,
-): Application {
-  assertUserIsCurrent(user);
-  requirePermission(user, "updateApplicationStatus");
-  const state = useAppStore.getState();
-  const application = getApplication(applicationId);
-  enforceApplicationScope(user, application);
-  if (application.status === to) return application;
-
-  const stamped = nowIso();
-  const noteText =
-    note?.trim() ||
-    (to === "in_review"
-      ? "Passed initial triage; assigned for review."
-      : to === "rejected"
-        ? "Reviewed and rejected against the filing manifest."
-        : "Status advanced.");
-
-  const updated: Application = {
-    ...application,
-    status: to,
-    updatedAt: stamped,
-    history: [
-      ...application.history,
-      { to, changedById: user.id, changedAt: stamped, note: noteText },
-    ],
-  };
-  useAppStore.setState({
-    applications: state.applications.map((a) => (a.id === applicationId ? updated : a)),
-  });
-  markMutated();
-  return updated;
+): Promise<Application> {
+  const body = await apiSend<ApiApplicationRow>(
+    `/api/applications/${applicationId}/status`,
+    "PATCH",
+    { to, note },
+  );
+  return apiApplicationRow(body).application;
 }
 
 export interface CreateUserInput {
@@ -533,57 +663,16 @@ export interface CreateUserInput {
   status?: User["status"];
 }
 
-function validateUserScope(user: User, target: CreateUserInput): void {
-  requirePermission(user, "manageUsers", { associationId: target.associationId });
-  if (user.role === "pharmacy_association_admin") {
-    if (target.associationId !== user.associationId) {
-      throw new PermissionError(
-        `${user.name} can only invite users into their own association.`,
-        user,
-        "manageUsers",
-      );
-    }
-    if (target.role === "super_admin" || target.role === "moderator") {
-      throw new PermissionError(
-        "Association admins cannot grant elevated roles.",
-        user,
-        "manageUsers",
-      );
-    }
-  }
-  if (target.pharmacyId) {
-    const pharmacy = useAppStore.getState().pharmacies.find((p) => p.id === target.pharmacyId);
-    if (!pharmacy || pharmacy.associationId !== target.associationId) {
-      throw new PermissionError(
-        "The pharmacy must belong to the selected association.",
-        user,
-        "manageUsers",
-      );
-    }
-  }
-}
 
-export function inviteUser(input: CreateUserInput, user: User): User {
-  assertUserIsCurrent(user);
-  validateUserScope(user, input);
-  const state = useAppStore.getState();
-  if (state.users.some((u) => u.email.toLowerCase() === input.email.toLowerCase())) {
-    throw new DataError("not_found", `A user with email ${input.email} already exists.`);
-  }
-  const id = nextIdWithPrefix("u-", state.users);
-  const created: User = {
-    id,
-    name: input.name.trim(),
-    email: input.email.trim().toLowerCase(),
+export async function inviteUser(input: CreateUserInput, _user: User): Promise<User> {
+  const body = await apiSend<{ ok: true; user: ApiUser }>("/api/users", "POST", {
+    name: input.name,
+    email: input.email,
     role: input.role,
     associationId: input.associationId,
     pharmacyId: input.pharmacyId,
-    status: input.status ?? "invited",
-    createdAt: nowIso(),
-  };
-  useAppStore.setState({ users: [...state.users, created] });
-  markMutated();
-  return created;
+  });
+  return apiUserToUser(body.user);
 }
 
 export interface UpdateUserInput {
@@ -595,56 +684,38 @@ export interface UpdateUserInput {
   status?: User["status"];
 }
 
-export function updateUser(userId: string, patch: UpdateUserInput, user: User): User {
-  assertUserIsCurrent(user);
-  const state = useAppStore.getState();
-  const target = state.users.find((u) => u.id === userId);
-  if (!target) throw new DataError("not_found", `User "${userId}" does not exist.`);
-  if (target.role === "super_admin" && user.role !== "super_admin") {
-    throw new PermissionError("Only super admins can modify super admins.", user, "manageUsers");
-  }
-  const effectiveAssociation = patch.associationId ?? target.associationId ?? "";
-  validateUserScope(user, {
-    name: target.name,
-    email: target.email,
-    role: patch.role ?? target.role,
-    associationId: effectiveAssociation,
-    pharmacyId: patch.pharmacyId === null ? undefined : (patch.pharmacyId ?? target.pharmacyId),
-    status: target.status,
+export async function updateUser(userId: string, patch: UpdateUserInput, _user: User): Promise<User> {
+  const body = await apiSend<{ ok: true; user: ApiUser }>(`/api/users/${userId}`, "PATCH", {
+    name: patch.name,
+    email: patch.email,
+    role: patch.role,
+    associationId: patch.associationId,
+    // `undefined` means "leave alone"; the API needs null to mean "clear".
+    pharmacyId: patch.pharmacyId === undefined ? undefined : patch.pharmacyId,
+    status: patch.status,
   });
-
-  const seenEmail = state.users.some(
-    (u) => u.id !== userId && u.email.toLowerCase() === (patch.email ?? target.email).toLowerCase(),
-  );
-  if (seenEmail) throw new DataError("not_found", "A different user already uses that email.");
-
-  const updated: User = {
-    ...target,
-    name: patch.name ?? target.name,
-    email: (patch.email ?? target.email).toLowerCase(),
-    role: patch.role ?? target.role,
-    associationId: effectiveAssociation || undefined,
-    pharmacyId: patch.pharmacyId === null ? undefined : (patch.pharmacyId ?? target.pharmacyId),
-    status: patch.status ?? target.status,
-  };
-  useAppStore.setState({
-    users: state.users.map((u) => (u.id === userId ? updated : u)),
-  });
-  markMutated();
-  return updated;
+  return apiUserToUser(body.user);
 }
 
-export function removeUser(userId: string, user: User): void {
-  assertUserIsCurrent(user);
-  if (userId === user.id) {
-    throw new DataError("not_found", "You cannot remove the identity you are acting as.");
-  }
-  const state = useAppStore.getState();
-  const target = state.users.find((u) => u.id === userId);
-  if (!target) throw new DataError("not_found", `User "${userId}" does not exist.`);
-  requirePermission(user, "manageUsers", { associationId: target.associationId });
-  useAppStore.setState({ users: state.users.filter((u) => u.id !== userId) });
-  markMutated();
+/**
+ * Self-service profile edit.
+ *
+ * Deliberately NOT routed through `/api/users/[id]`: that route refuses any
+ * self-targeted write (see `guardWritable`), because an admin acting on their
+ * own row is how self-lockout and privilege escalation happen. `/api/users/me`
+ * is the hardened path for "a person editing themselves" and whitelists name
+ * and email only, so it cannot be used to change role, status, or tenant.
+ */
+export async function updateOwnProfile(patch: {
+  name?: string;
+  email?: string;
+}): Promise<User> {
+  const body = await apiSend<{ ok: true; user: ApiUser }>("/api/users/me", "PATCH", patch);
+  return apiUserToUser(body.user);
+}
+
+export async function removeUser(userId: string, _user: User): Promise<void> {
+  await apiSend(`/api/users/${userId}`, "DELETE");
 }
 
 /** Public/marketing signup: creates a scoped worker account and returns it. */
@@ -680,64 +751,36 @@ export interface CreateAssociationInput {
   gmpCertificateId: string;
 }
 
-export function createAssociation(input: CreateAssociationInput & { status?: PharmacyAssociation["status"] }, user: User): PharmacyAssociation {
-  assertUserIsCurrent(user);
-  requirePermission(user, "manageAssociations");
-  const state = useAppStore.getState();
-  const id = nextIdWithPrefix("assoc-", state.associations);
-  const created: PharmacyAssociation = {
-    id,
-    name: input.name.trim(),
-    region: input.region.trim(),
-    gmpCertificateId: input.gmpCertificateId.trim(),
-    status: input.status ?? "active",
-    createdAt: nowIso(),
-  };
-  useAppStore.setState({ associations: [...state.associations, created] });
-  markMutated();
-  return created;
+export async function createAssociation(
+  input: CreateAssociationInput & { status?: PharmacyAssociation["status"] },
+  _user: User,
+): Promise<PharmacyAssociation> {
+  const body = await apiSend<{ ok: true; association: ApiAssociation }>("/api/associations", "POST", {
+    name: input.name,
+    region: input.region,
+    gmpCertificateId: input.gmpCertificateId,
+  });
+  return apiAssociation(body.association);
 }
 
-export function updateAssociation(
+export async function updateAssociation(
   associationId: string,
   patch: Partial<CreateAssociationInput> & { status?: PharmacyAssociation["status"] },
-  user: User,
-): PharmacyAssociation {
-  assertUserIsCurrent(user);
-  requirePermission(user, "manageAssociations");
-  const state = useAppStore.getState();
-  const target = state.associations.find((a) => a.id === associationId);
-  if (!target) throw new DataError("not_found", `Association "${associationId}" does not exist.`);
-  const updated = { ...target, ...patch, name: patch.name?.trim() ?? target.name };
-  useAppStore.setState({
-    associations: state.associations.map((a) => (a.id === associationId ? updated : a)),
-  });
-  markMutated();
-  return updated;
+  _user: User,
+): Promise<PharmacyAssociation> {
+  const body = await apiSend<{ ok: true; association: ApiAssociation }>(
+    `/api/associations/${associationId}`,
+    "PATCH",
+    patch,
+  );
+  return apiAssociation(body.association);
 }
 
-export function deleteAssociation(associationId: string, user: User): void {
-  assertUserIsCurrent(user);
-  requirePermission(user, "manageAssociations");
-  const state = useAppStore.getState();
-  const target = state.associations.find((a) => a.id === associationId);
-  if (!target) throw new DataError("not_found", `Association "${associationId}" does not exist.`);
-
-  const pharmacyIds = state.pharmacies.filter((p) => p.associationId === associationId).map((p) => p.id);
-  const applicationIds = state.applications
-    .filter((a) => pharmacyIds.includes(a.pharmacyId))
-    .map((a) => a.id);
-
-  useAppStore.setState({
-    associations: state.associations.filter((a) => a.id !== associationId),
-    pharmacies: state.pharmacies.filter((p) => p.associationId !== associationId),
-    applications: state.applications.filter((a) => !applicationIds.includes(a.id)),
-    reports: state.reports.filter((r) => !applicationIds.includes(r.applicationId)),
-    users: state.users.map((u) =>
-      u.associationId === associationId ? { ...u, status: "disabled" as const } : u,
-    ),
-  });
-  markMutated();
+export async function deleteAssociation(associationId: string, _user: User): Promise<void> {
+  // A populated association answers 409: the delete would cascade into
+  // pharmacies, filings, and users. The message is surfaced verbatim so the
+  // admin sees the actual counts.
+  await apiSend(`/api/associations/${associationId}`, "DELETE");
 }
 
 export interface CreatePharmacyInput {
@@ -747,127 +790,36 @@ export interface CreatePharmacyInput {
   associationId: string;
 }
 
-export function createPharmacy(input: CreatePharmacyInput & { status?: Pharmacy["status"] }, user: User): Pharmacy {
-  assertUserIsCurrent(user);
-  requirePermission(user, "managePharmacies");
-  const state = useAppStore.getState();
-  if (!state.associations.some((a) => a.id === input.associationId)) {
-    throw new DataError("not_found", "The selected association does not exist.");
-  }
-  if (state.pharmacies.some((p) => p.licenseNumber.toLowerCase() === input.licenseNumber.toLowerCase())) {
-    throw new DataError("not_found", `A pharmacy with license ${input.licenseNumber} already exists.`);
-  }
-  const id = nextIdWithPrefix("ph-", state.pharmacies);
-  const created: Pharmacy = {
-    id,
-    name: input.name.trim(),
-    address: input.address.trim(),
-    licenseNumber: input.licenseNumber.trim(),
+export async function createPharmacy(
+  input: CreatePharmacyInput & { status?: Pharmacy["status"] },
+  _user: User,
+): Promise<Pharmacy> {
+  const body = await apiSend<{ ok: true; pharmacy: ApiPharmacyRow }>("/api/pharmacies", "POST", {
     associationId: input.associationId,
-    status: input.status ?? "active",
-    createdAt: nowIso(),
-  };
-  useAppStore.setState({ pharmacies: [...state.pharmacies, created] });
-  markMutated();
-  return created;
+    name: input.name,
+    address: input.address,
+    licenseNumber: input.licenseNumber,
+  });
+  return apiPharmacy(body.pharmacy);
 }
 
-export function updatePharmacy(
+export async function updatePharmacy(
   pharmacyId: string,
   patch: Partial<CreatePharmacyInput> & { status?: Pharmacy["status"] },
-  user: User,
-): Pharmacy {
-  assertUserIsCurrent(user);
-  requirePermission(user, "managePharmacies");
-  const state = useAppStore.getState();
-  const target = state.pharmacies.find((p) => p.id === pharmacyId);
-  if (!target) throw new DataError("not_found", `Pharmacy "${pharmacyId}" does not exist.`);
-  if (patch.associationId && !state.associations.some((a) => a.id === patch.associationId)) {
-    throw new DataError("not_found", "The selected association does not exist.");
-  }
-  const updated: Pharmacy = { ...target, ...patch, name: patch.name?.trim() ?? target.name };
-  useAppStore.setState({
-    pharmacies: state.pharmacies.map((p) => (p.id === pharmacyId ? updated : p)),
-  });
-  markMutated();
-  return updated;
+  _user: User,
+): Promise<Pharmacy> {
+  const body = await apiSend<{ ok: true; pharmacy: ApiPharmacyRow }>(
+    `/api/pharmacies/${pharmacyId}`,
+    "PATCH",
+    patch,
+  );
+  return apiPharmacy(body.pharmacy);
 }
 
-export function deletePharmacy(pharmacyId: string, user: User): void {
-  assertUserIsCurrent(user);
-  requirePermission(user, "managePharmacies");
-  const state = useAppStore.getState();
-  if (!state.pharmacies.some((p) => p.id === pharmacyId)) {
-    throw new DataError("not_found", `Pharmacy "${pharmacyId}" does not exist.`);
-  }
-  const applicationIds = state.applications
-    .filter((a) => a.pharmacyId === pharmacyId)
-    .map((a) => a.id);
-  useAppStore.setState({
-    pharmacies: state.pharmacies.filter((p) => p.id !== pharmacyId),
-    applications: state.applications.filter((a) => a.pharmacyId !== pharmacyId),
-    reports: state.reports.filter((r) => !applicationIds.includes(r.applicationId)),
-    users: state.users.map((u) => (u.pharmacyId === pharmacyId ? { ...u, pharmacyId: undefined } : u)),
-  });
-  markMutated();
+export async function deletePharmacy(pharmacyId: string, _user: User): Promise<void> {
+  await apiSend(`/api/pharmacies/${pharmacyId}`, "DELETE");
 }
 
-/* ---------------------------------------------------------------------- */
-/* Report synthesis (the mock "review engine")                             */
-/* ---------------------------------------------------------------------- */
-
-function synthesizeReport(application: Application, user: User): Report {
-  const records = application.files.reduce((sum, f) => sum + f.rowCount, 0);
-  const invalidFiles = application.files.filter((f) => f.validationState === "invalid");
-  const warnFiles = application.files.filter((f) => f.validationState === "warning");
-  const hash = hashStr(application.id);
-
-  const base = 97 - warnFiles.length * 2.4 - invalidFiles.length * 13;
-  const quality = Math.min(99.5, Math.max(68, base - (records % 7) * 0.3));
-  const batchCoverage = Math.min(100, Math.max(95, 99.7 - warnFiles.length * 0.5 - (hash % 10) * 0.06));
-  const lateFlags = (hash % 9) + (invalidFiles.length > 0 ? 3 : 0);
-  const critical = invalidFiles.length + (warnFiles.length > 0 ? (hash % 2 === 0 ? 1 : 0) : 0);
-  const grade =
-    invalidFiles.length > 0 ? "Non-compliant" : warnFiles.length > 0 ? "Compliant — with caveats" : "Compliant";
-
-  const resultData: ReportResultData = {
-    "Layout grade": grade,
-    "Records examined": records,
-    "Data quality score": `${quality.toFixed(1)}%`,
-    "Critical deviations": critical,
-    "Late-dispense flags": lateFlags,
-    "Batch coverage": `${batchCoverage.toFixed(1)}%`,
-    "Schema version": "RxFill 2.5",
-  };
-
-  return {
-    id: `RPT-${application.id}`,
-    applicationId: application.id,
-    status: "final",
-    resultData,
-    generatedBy: user.id,
-    generatedAt: nowIso(),
-    rawData: JSON.stringify(
-      {
-        schema: "RxFill",
-        version: "2.5",
-        examined: records,
-        files: application.files.map((f) => ({
-          file: f.filename,
-          rows: f.rowCount,
-          validation: f.validationState,
-        })),
-        critical,
-        lateFlags,
-        batchCoverage: Number(batchCoverage.toFixed(1)),
-        generatedBy: user.id,
-        generatedAt: nowIso(),
-      },
-      null,
-      2,
-    ),
-  };
-}
 
 /* ---------------------------------------------------------------------- */
 /* Shared helpers for components                                           */

@@ -32,7 +32,7 @@ export default function AdminAssociationsPage() {
       <PageHeading
         eyebrow="Administration"
         title="Associations"
-        description="Tenants that own pharmacies and filings. Deleting an association cascades to its pharmacies, filings, and reports, and disables its users."
+        description="Tenants that own pharmacies and filings. Deletion is refused while a tenant still holds data, since it would cascade — suspend it instead."
         rule="warm"
       >
         <Button onClick={() => setCreating(true)}>
@@ -121,18 +121,17 @@ export default function AdminAssociationsPage() {
         title={`Delete ${deleting?.association.name ?? "association"}?`}
         description={
           <>
-            This removes the association, its{" "}
+            Deleting is only possible while the association is empty. This one still holds{" "}
             <strong className="font-mono text-[12px]">{deleting?.pharmacyCount ?? 0}</strong>{" "}
-            pharmacies,{" "}
+            pharmac(ies) and{" "}
             <strong className="font-mono text-[12px]">{deleting?.applicationCount ?? 0}</strong>{" "}
-            attached filings and reports, and disables the users in that tenant. This cannot be
-            undone.
+            filing(s), so the request will be refused. Suspend it instead — that is reversible.
           </>
         }
         confirmLabel="Delete association"
         onConfirm={async () => {
           if (!deleting || !user) return;
-          deleteAssociation(deleting.association.id, user);
+          await deleteAssociation(deleting.association.id, user);
         }}
       />
     </PermissionGate>

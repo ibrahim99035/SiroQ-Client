@@ -101,7 +101,7 @@ function StepRow({
         </p>
         {event ? (
           <p className="mt-0.5 font-mono text-[11px] text-muted">
-            {actorName(event.changedById, users)} · {fmtDateTime(event.changedAt)}
+            {actorName(event.changedByName, event.changedById, users)} · {fmtDateTime(event.changedAt)}
           </p>
         ) : (
           <p className="mt-0.5 font-mono text-[11px] text-muted">Not yet reached</p>
@@ -127,7 +127,7 @@ function RejectedRow({ application, users }: { application: Application; users: 
         {reject ? (
           <>
             <p className="mt-0.5 font-mono text-[11px] text-muted">
-              {actorName(reject.changedById, users)} · {fmtDateTime(reject.changedAt)}
+              {actorName(reject.changedByName, reject.changedById, users)} · {fmtDateTime(reject.changedAt)}
             </p>
             {reject.note ? <p className="mt-1 max-w-xl text-[13px] leading-snug text-ink/80">{reject.note}</p> : null}
           </>
@@ -137,6 +137,12 @@ function RejectedRow({ application, users }: { application: Application; users: 
   );
 }
 
-function actorName(userId: string, users: User[]): string {
-  return users.find((u) => u.id === userId)?.name ?? "System";
+/**
+ * Prefers the name the server resolved from the event's `changedBy` relation.
+ * The `users` lookup is kept only for the seeded mock rows, whose ids do exist
+ * in the mock list; a real database uuid is in neither, and that used to render
+ * every action in the chain of custody as "System".
+ */
+function actorName(name: string | undefined, userId: string, users: User[]): string {
+  return name ?? users.find((u) => u.id === userId)?.name ?? "System";
 }

@@ -30,18 +30,36 @@ export default function ApplicationDetailPage() {
     [user?.id, revision, id],
   );
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [advancing, setAdvancing] = React.useState(false);
+  const [advanceError, setAdvanceError] = React.useState<string | null>(null);
 
   if (!user) return null;
 
   const isPermission = error instanceof PermissionError;
   const isNotFound = error instanceof DataError && error.code === "not_found";
 
-  const advance = (to: ApplicationStatus) => {
+  // `data` is null while the resource loads and on the error branches, and
+  // this component only early-returns for a missing user, so this has to
+  // tolerate a null resource. The bar that uses it is only rendered once
+  // `data!` is known to be present.
+  const status = data?.application.status;
+  const isTerminal = status === "reported" || status === "rejected";
+
+  const advance = async (to: ApplicationStatus) => {
+    setAdvancing(true);
+    setAdvanceError(null);
     try {
-      updateApplicationStatus(id, to, user);
-      reload();
-    } catch {
-      reload();
+      await updateApplicationStatus(id, to, user);
+      await reload();
+    } catch (reason) {
+      // Surfaced, not swallowed. The old mock threw synchronously and the
+      // `catch { reload() }` below it turned every refusal into a silent no-op,
+      // so a user who could not move a filing was told nothing at all.
+      setAdvanceError(
+        reason instanceof Error ? reason.message : "That status change was refused.",
+      );
+    } finally {
+      setAdvancing(false);
     }
   };
 
@@ -52,7 +70,13 @@ export default function ApplicationDetailPage() {
           Applications
         </Link>
         <span className="mx-2 text-hairline" aria-hidden="true">/</span>
-        <span className="font-mono text-[12px] text-muted">{id}</span>
+        {/* The filing reference, not the route id. `id` is a UUID, which is
+            database identity rather than anything a user recognises; the mock
+            layer used the reference as the key, so this slot used to read
+            "AP-2026-2601" and would otherwise have silently become a UUID. */}
+        <span className="font-mono text-[12px] text-muted">
+          {data?.application.reference ?? id}
+        </span>
       </nav>
 
       {state === "loading" ? (
@@ -99,21 +123,54 @@ export default function ApplicationDetailPage() {
             <div className="space-y-8">
               {/* Triage controls for reviewers */}
               <VisibleWhen action="updateApplicationStatus">
-                <div className="flex flex-wrap items-center gap-2 card px-4 py-3" aria-label="Filing controls">
-                  <p className="mr-auto text-[13px] text-muted">
-                    Triage this filing: advance the review state or attach a report.
-                  </p>
-                  {data!.application.status === "pending" ? (
-                    <Button size="sm" variant="secondary" onClick={() => advance("in_review")}>
-                      Move to in review
-                    </Button>
-                  ) : null}
-                  {data!.application.status !== "reported" ? (
-                    <Button size="sm" variant="outline" onClick={() => advance("rejected")}>
+                {/* `reported` and `rejected` are terminal. Rendering the triage
+                    bar on them was wrong twice over: the prompt still told the
+                    reviewer to advance the filing, and the button set collapsed
+                    to nothing on `reported` (a lone instruction with no action)
+                    while `rejected` kept offering "Reject filing", which the API
+                    answers with 409 because the status is already that. An
+                    action that can only fail should not be on the screen. */}
+                {isTerminal ? (
+                  <div className="flex flex-wrap items-center gap-2 card px-4 py-3" aria-label="Filing controls">
+                    <p className="text-[13px] text-muted">
+                      {status === "reported"
+                        ? "This filing is reported and closed to further changes. The attached report is the deliverable."
+                        : "This filing was rejected and is closed to further changes."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2 card px-4 py-3" aria-label="Filing controls">
+                    <p className="mr-auto text-[13px] text-muted">
+                      Triage this filing: advance the review state or attach a report.
+                    </p>
+                    {status === "pending" ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={advancing}
+                        onClick={() => void advance("in_review")}
+                      >
+                        Move to in review
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={advancing}
+                      onClick={() => void advance("rejected")}
+                    >
                       Reject filing
                     </Button>
-                  ) : null}
-                </div>
+                  </div>
+                )}
+                {advanceError ? (
+                  <p
+                    role="alert"
+                    className="mt-2 border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]"
+                  >
+                    {advanceError}
+                  </p>
+                ) : null}
               </VisibleWhen>
 
               <section aria-labelledby="ledger-title">

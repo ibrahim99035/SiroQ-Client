@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { useSessionOptional } from "@/components/session-provider";
 import type {
   Application,
   Pharmacy,
@@ -65,12 +66,21 @@ export function markMutated(): void {
   useAppStore.setState((s) => ({ revision: s.revision + 1 }));
 }
 
-/** The user selected via the "Viewing as" switcher (mock auth session). */
+/**
+ * The signed-in user, from the real session.
+ *
+ * This used to return `seedUsers[0]` from the mock store, which meant every
+ * `PermissionGate` and nav item in the running app was evaluated against a
+ * hardcoded person. It now reads the session provider, which fetches
+ * `/api/auth/me`. The `useCurrentUser` name and import site are unchanged so the
+ * ~14 mock consumers migrate without touching their import lines.
+ *
+ * Returns `null` while the session is still loading, so callers must handle the
+ * loading state rather than treating `null` as "signed out" — `AppShell` does
+ * exactly that.
+ */
 export function useCurrentUser(): User | null {
-  return useAppStore((s) => {
-    if (!s.currentUserId) return null;
-    return s.users.find((u) => u.id === s.currentUserId) ?? null;
-  });
+  return useSessionOptional()?.user ?? null;
 }
 
 /** Subscribes to the data revision; every mutation re-renders the component. */

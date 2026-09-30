@@ -85,7 +85,7 @@ export function UserFormDialog({
     ? ["super_admin", "moderator", "pharmacy_association_admin", "pharmacy_worker"]
     : ["pharmacy_association_admin", "pharmacy_worker"];
 
-  const onSubmit = (values: FormValues) => {
+  const onSubmit = async (values: FormValues) => {
     if (!actor) return;
     setError(null);
     try {
@@ -98,9 +98,9 @@ export function UserFormDialog({
         status: values.status,
       };
       if (user) {
-        updateUser(user.id, payload, actor);
+        await updateUser(user.id, payload, actor);
       } else {
-        inviteUser(payload, actor);
+        await inviteUser(payload, actor);
       }
       onSaved();
       onOpenChange(false);

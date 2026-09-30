@@ -93,10 +93,6 @@ export function can(
           return resource?.pharmacyAssociationId === undefined
             ? true
             : resource.pharmacyAssociationId === user.associationId;
-        case "attachReport":
-          // Reports attach to a filing, which is always owned by exactly one
-          // association, so a match on the owning association is sufficient.
-          return resource ? resource.pharmacyAssociationId === user.associationId : true;
         case "manageUsers":
           return resource
             ? resource.associationId === user.associationId
@@ -115,8 +111,6 @@ export function can(
           return resource
             ? resource.pharmacyId === user.pharmacyId
             : true;
-        case "attachReport":
-          return resource ? resource.pharmacyId === user.pharmacyId : true;
         default:
           return false;
       }

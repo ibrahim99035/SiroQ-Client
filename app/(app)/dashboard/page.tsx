@@ -50,7 +50,7 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeading
-        eyebrow={`Viewing as ${user.name} · ${ROLE_LABELS[user.role]}`}
+        eyebrow={`Signed in as ${user.name} · ${ROLE_LABELS[user.role]}`}
         title="Dashboard"
         description={
           stats.data

@@ -129,7 +129,7 @@ export function NotAuthorized({
     >
       <p>
         {detail ??
-          "Your current role does not include access to this area. Try a different identity from the “Viewing as” switch in the top bar."}
+          "Your role does not include access to this area. If you need it, ask an administrator to change your access."}
       </p>
     </StatePanel>
   );
