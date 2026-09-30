@@ -2,6 +2,16 @@ import "server-only";
 
 import { createTransport, type Transporter } from "nodemailer";
 
+import {
+  contactMessageEmail,
+  filingStatusChangedEmail,
+  passwordResetEmail,
+  workspaceInviteEmail,
+  type BrandLinks,
+  type EmailMessage,
+  type FilingStatus as TemplateFilingStatus,
+} from "./email-templates";
+
 /**
  * Outbound mail.
  *
@@ -68,21 +78,62 @@ export interface MailResult {
   reason?: string;
 }
 
-async function send(to: string, subject: string, text: string): Promise<MailResult> {
+/**
+ * Absolute URLs for the branding in a message.
+ *
+ * The logo is an image with a relative path on disk, which resolves to nothing
+ * in a mail client, so it needs a fully-qualified URL. `APP_BASE_URL` is the
+ * only source that is correct for every recipient at once — a link derived from
+ * the incoming request would break for anyone not already on that host.
+ *
+ * When it is unset the templates omit the logo and fall back to a text
+ * wordmark, so a missing variable degrades the message instead of putting a
+ * broken-image glyph in everyone's inbox.
+ */
+function brandLinks(): BrandLinks {
+  const base = process.env.APP_BASE_URL;
+  if (!base) return {};
+  const absolute = (path: string) => new URL(path, base).toString();
+  return {
+    logoUrl: absolute("/brand/siroq-lockup-reversed.png"),
+    brandUrl: absolute("/"),
+    termsUrl: absolute("/terms"),
+    privacyUrl: absolute("/privacy"),
+    statusUrl: absolute("/status"),
+  };
+}
+
+/**
+ * Delivers a branded message.
+ *
+ * `text` and `html` go out together as `multipart/alternative`: a client that
+ * cannot render HTML, or a reader who prefers plain text, gets the full message
+ * rather than an empty shell. `text` is the authoritative version — the HTML is
+ * presentation only, and no information may live solely in it.
+ */
+async function send(to: string, message: EmailMessage): Promise<MailResult> {
   const client = transport();
   if (!client) {
-    console.info(`[mail] SMTP not configured — not sending "${subject}" to ${to}:\n${text}`);
+    console.info(
+      `[mail] SMTP not configured — not sending "${message.subject}" to ${to}:\n${message.text}`,
+    );
     return { delivered: false, reason: "smtp_not_configured" };
   }
 
   try {
-    await client.sendMail({ from: fromAddress(), to, subject, text });
+    await client.sendMail({
+      from: fromAddress(),
+      to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    });
     return { delivered: true };
   } catch (error) {
     // Never surface the transport error to the caller: SMTP failures carry
     // host names and auth detail that would help an attacker fingerprint the
     // account, and the generic response must stay identical either way.
-    console.error(`[mail] failed to send "${subject}" to ${to}:`, error);
+    console.error(`[mail] failed to send "${message.subject}" to ${to}:`, error);
     return { delivered: false, reason: "smtp_error" };
   }
 }
@@ -93,19 +144,7 @@ export function sendPasswordReset(params: {
   resetUrl: string;
 }): Promise<MailResult> {
   const { to, name, resetUrl } = params;
-  return send(
-    to,
-    "Reset your SiroQ password",
-    `Hi ${name},
-
-Someone asked to reset the password for your SiroQ account. Open the link below to choose a new one:
-
-${resetUrl}
-
-The link expires in 60 minutes and can only be used once. If you did not ask for this, you can ignore this email — your password will not change.
-
-— SiroQ`,
-  );
+  return send(to, passwordResetEmail({ name, resetUrl, ...brandLinks() }));
 }
 
 export function sendWorkspaceInvite(params: {
@@ -115,19 +154,7 @@ export function sendWorkspaceInvite(params: {
   inviteUrl: string;
 }): Promise<MailResult> {
   const { to, name, inviterName, inviteUrl } = params;
-  return send(
-    to,
-    `${inviterName} invited you to SiroQ`,
-    `Hi ${name},
-
-${inviterName} invited you to join their workspace on SiroQ. Accept the invitation to set a password and get access:
-
-${inviteUrl}
-
-If you were not expecting this, ignore this email — no account will be created.
-
-— SiroQ`,
-  );
+  return send(to, workspaceInviteEmail({ name, inviterName, inviteUrl, ...brandLinks() }));
 }
 
 /** Where contact-form submissions are delivered. */
@@ -165,21 +192,17 @@ export async function sendContactMessage(params: {
   }
 
   const ref = `contact-${Date.now().toString(36)}`;
+  const message = contactMessageEmail({ ...params, ...brandLinks() });
   try {
     await client.sendMail({
       from: fromAddress(),
       to: inbox,
       replyTo: params.email,
-      subject: `[SiroQ ${ref}] ${params.topic} — ${params.organisation || "no organisation"}`,
-      text: [
-        `Topic:     ${params.topic}`,
-        `Name:      ${params.name}`,
-        `Email:     ${params.email}`,
-        `Org:       ${params.organisation || "—"}`,
-        `Reference: ${ref}`,
-        "",
-        params.message,
-      ].join("\n"),
+      // The reference is kept in the subject so an operator can find the
+      // matching row in the log, and in the body so it survives forwarding.
+      subject: `[SiroQ ${ref}] ${message.subject}`,
+      text: `${message.text}\nReference: ${ref}`,
+      html: message.html,
     });
     return { delivered: true };
   } catch (error) {
@@ -192,15 +215,7 @@ export async function sendContactMessage(params: {
 /* Filing notifications                                                   */
 /* ---------------------------------------------------------------------- */
 
-/** Human wording for a status value, used in subjects and bodies. */
-const STATUS_LABEL = {
-  pending: "Pending",
-  in_review: "In review",
-  reported: "Reported",
-  rejected: "Rejected",
-} as const;
-
-export type FilingStatus = keyof typeof STATUS_LABEL;
+export type FilingStatus = TemplateFilingStatus;
 
 /**
  * Notifies the person who staged a filing that a reviewer moved it.
@@ -225,36 +240,18 @@ export function sendFilingStatusChanged(params: {
   filingUrl: string;
 }): Promise<MailResult> {
   const { to, submitterName, reference, title, from, to_, changedByName, note, filingUrl } = params;
-
-  const subject =
-    to_ === "rejected"
-      ? `Filing ${reference} was rejected`
-      : `Report ready for filing ${reference}`;
-
   return send(
     to,
-    subject,
-    [
-      `Hi ${submitterName},`,
-      "",
-      to_ === "rejected"
-        ? `A reviewer rejected the filing "${title}" (${reference}).`
-        : `The report for "${title}" (${reference}) is ready. The filing is now marked reported and the document is available to download.`,
-      "",
-      `Status: ${STATUS_LABEL[from]} → ${STATUS_LABEL[to_]}`,
-      `Changed by: ${changedByName}`,
-      "",
-      "Reviewer's note:",
+    filingStatusChangedEmail({
+      submitterName,
+      reference,
+      title,
+      from,
+      to_,
+      changedByName,
       note,
-      "",
-      "Open the filing:",
       filingUrl,
-      "",
-      to_ === "rejected"
-        ? "A rejected filing can be reopened for more information. If the rejection looks wrong, reply to an administrator with the reference above."
-        : "This is the final status. A reported filing cannot be re-statused, so the delivered document is the record.",
-      "",
-      "— SiroQ",
-    ].join("\n"),
+      ...brandLinks(),
+    }),
   );
 }
