@@ -32,7 +32,7 @@ export default function MarketingHomePage() {
             <p className="eyebrow">Dispensing records · Review · Chain of custody</p>
             <h1 className="mt-5 text-[2.5rem] font-semibold leading-[1.08] tracking-tight text-ink sm:text-[3.5rem]">
               Every dispensing record you accept,
-              <span className="block text-[var(--brand-ink)]">with the trail to prove it.</span>
+              <span className="block text-accent-strong">with the trail to prove it.</span>
             </h1>
             <div className="signature-rule mt-8" />
             <p className="mt-8 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
@@ -110,7 +110,8 @@ export default function MarketingHomePage() {
             <div className="card flex flex-col p-6">
               <p className="req-field-label">Stored document</p>
               <p className="mt-2 font-mono text-[12px] text-ink">
-                dispensing-2026-03-15.csv
+                {/* A filename in a monospace panel: an artefact, not copy. */}
+                {"dispensing-2026-03-15.csv"}
               </p>
               <ul className="mt-5 space-y-2.5 font-mono text-[11px] text-muted">
                 {[
@@ -383,7 +384,7 @@ export default function MarketingHomePage() {
               }
             >
               {plan.featured ? (
-                <span className="absolute -top-2.5 left-7 rounded-full bg-accent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white">
+                <span className="absolute -top-2.5 left-7 rounded-full bg-accent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--on-accent)]">
                   Most common
                 </span>
               ) : null}

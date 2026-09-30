@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const TONES = {
   error: { border: "border-[var(--status-rejected)]/50", iconText: "text-[var(--status-rejected-fill)]" },
-  warning: { border: "border-[#8a6d12]/50", iconText: "text-[#7a5c08]" },
+  warning: { border: "border-[var(--warning-border)]/50", iconText: "text-[var(--warning-text)]" },
   empty: { border: "border-hairline", iconText: "text-muted" },
 } as const;
 

@@ -92,32 +92,32 @@ export default function SignupPage() {
           <Label htmlFor="name">Full name</Label>
           <Input id="name" autoComplete="name" placeholder="Jordan Reed" {...form.register("name")} />
           {form.formState.errors.name ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.name.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.name.message}</p>
           ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="email">Work email</Label>
           <Input id="email" type="email" autoComplete="email" placeholder="you@pharmacy.org" {...form.register("email")} />
           {form.formState.errors.email ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.email.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.email.message}</p>
           ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="password">Password</Label>
           <Input id="password" type="password" autoComplete="new-password" placeholder="——————" {...form.register("password")} />
           {form.formState.errors.password ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.password.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.password.message}</p>
           ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="confirm">Confirm password</Label>
           <Input id="confirm" type="password" autoComplete="new-password" placeholder="——————" {...form.register("confirm")} />
           {form.formState.errors.confirm ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.confirm.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.confirm.message}</p>
           ) : null}
         </div>
         {error ? (
-          <p role="alert" className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]">
+          <p role="alert" className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[var(--danger-text)]">
             {error}
           </p>
         ) : null}

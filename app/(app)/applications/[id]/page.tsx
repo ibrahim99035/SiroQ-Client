@@ -165,7 +165,7 @@ export default function ApplicationDetailPage() {
                 {advanceError ? (
                   <p
                     role="alert"
-                    className="mt-2 border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]"
+                    className="mt-2 border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]"
                   >
                     {advanceError}
                   </p>

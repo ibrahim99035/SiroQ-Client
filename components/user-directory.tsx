@@ -191,9 +191,9 @@ export function UserDirectory({
 function UserStatusChip({ status }: { status: UserStatus }) {
   const tone =
     status === "active"
-      ? "text-[#245c42]"
+      ? "text-[var(--success-text)]"
       : status === "invited"
-        ? "text-[#7a5c08]"
+        ? "text-[var(--warning-text)]"
         : "text-muted";
   return (
     <span className={`font-mono text-[10px] uppercase tracking-wider ${tone}`}>{status}</span>

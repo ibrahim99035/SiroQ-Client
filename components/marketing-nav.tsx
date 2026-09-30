@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/brand-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 /**
  * Public site header.
@@ -17,17 +18,39 @@ import { BrandLogo } from "@/components/brand-logo";
  * render pass and no risk of the panel flashing open across a route change.
  */
 
-const SECTIONS = [
+/**
+ * Header sections.
+ *
+ * `/pricing` is deliberately absent. The page and its content are still built
+ * and the route still resolves, because existing links and any shared URLs keep
+ * working and we do not want a 404 from a link someone already sent around.
+ * It is only unlinked from the header, the footer and the sitemap.
+ *
+ * Reason: SiroQ is sold by application volume rather than by a published seat
+ * table, and the numbers on that page were placeholders pending real pricing
+ * sign-off. Surfacing unapproved prices in the primary navigation is worse than
+ * not advertising them. Restore the entry here — and in `marketing.tsx`'s
+ * footer and `lib/seo.ts`'s sitemap — once pricing is finalised.
+ */
+/**
+ * Built per render from `t` rather than as a module constant.
+ *
+ * A module-level array cannot call `t`, which would leave the labels invisible
+ * to `scripts/check-i18n.mjs` and let them silently ship untranslated. Taking
+ * the translator as a parameter keeps every label a literal `"…"` call that
+ * the checker can see.
+ */
+const sections = [
   { href: "/features", label: "Product" },
   { href: "/solutions", label: "Solutions" },
   { href: "/how-it-works", label: "How it works" },
-  { href: "/pricing", label: "Pricing" },
   { href: "/customers", label: "Customers" },
   { href: "/docs", label: "Docs" },
 ];
 
 export function MarketingNav() {
   const pathname = usePathname();
+  const navSections = sections;
   // `null` when closed; otherwise the route it was opened on.
   const [openedOn, setOpenedOn] = useState<string | null>(null);
   const open = openedOn !== null && openedOn === pathname;
@@ -57,7 +80,7 @@ export function MarketingNav() {
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex" aria-label="Sections">
-          {SECTIONS.map((item) => (
+          {navSections.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -74,14 +97,15 @@ export function MarketingNav() {
             href="/login"
             className="rounded-[10px] px-3 py-2 text-[13px] text-ink transition-colors hover:bg-accent-soft"
           >
-            Sign in
+            {"Sign in"}
           </Link>
           <Link
             href="/signup"
             className="rounded-[10px] bg-[linear-gradient(180deg,var(--accent),var(--accent-strong))] px-3.5 py-2 text-[13px] font-medium text-white shadow-soft transition-all hover:brightness-[1.07]"
           >
-            Request access
+            {"Request access"}
           </Link>
+          <ThemeToggle />
         </div>
 
         <button
@@ -108,7 +132,7 @@ export function MarketingNav() {
           className="border-t border-hairline bg-paper lg:hidden"
         >
           <nav className="section flex flex-col gap-1 py-4" aria-label="Sections">
-            {SECTIONS.map((item) => (
+            {navSections.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -123,14 +147,17 @@ export function MarketingNav() {
                 href="/login"
                 className="rounded-[10px] border border-hairline px-3.5 py-2.5 text-center text-sm text-ink"
               >
-                Sign in
+                {"Sign in"}
               </Link>
               <Link
                 href="/signup"
                 className="rounded-[10px] bg-[linear-gradient(180deg,var(--accent),var(--accent-strong))] px-3.5 py-2.5 text-center text-sm font-medium text-white"
               >
-                Request access
+                {"Request access"}
               </Link>
+              <div className="mt-1 flex items-center justify-center gap-1.5">
+                <ThemeToggle />
+              </div>
             </div>
           </nav>
         </div>

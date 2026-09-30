@@ -125,14 +125,14 @@ export function UserFormDialog({
             <Label>Full name</Label>
             <Input placeholder="Jordan Reed" {...form.register("name")} />
             {form.formState.errors.name ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.name.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.name.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
             <Label>Email</Label>
             <Input type="email" placeholder="jordan.reed@pharmacy.org" {...form.register("email")} />
             {form.formState.errors.email ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.email.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.email.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -177,7 +177,7 @@ export function UserFormDialog({
               </SelectContent>
             </Select>
             {form.formState.errors.associationId ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.associationId.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.associationId.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -219,7 +219,7 @@ export function UserFormDialog({
             </Select>
           </div>
           {error ? (
-            <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+            <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]">
               {error}
             </p>
           ) : null}

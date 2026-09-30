@@ -103,7 +103,7 @@ export function AcceptInviteForm({
             {...form.register("password")}
           />
           {form.formState.errors.password ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.password.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.password.message}</p>
           ) : null}
         </div>
         <div className="space-y-1.5">
@@ -116,13 +116,13 @@ export function AcceptInviteForm({
             {...form.register("confirmPassword")}
           />
           {form.formState.errors.confirmPassword ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.confirmPassword.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.confirmPassword.message}</p>
           ) : null}
         </div>
         {error ? (
           <p
             role="alert"
-            className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]"
+            className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[var(--danger-text)]"
           >
             {error}
           </p>

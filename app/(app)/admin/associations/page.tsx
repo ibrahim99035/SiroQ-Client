@@ -142,8 +142,8 @@ function EntityStatus({ status }: { status: "active" | "suspended" }) {
     <span
       className={
         status === "active"
-          ? "font-mono text-[10px] uppercase tracking-wider text-[#245c42]"
-          : "font-mono text-[10px] uppercase tracking-wider text-[#7a2e26]"
+          ? "font-mono text-[10px] uppercase tracking-wider text-[var(--success-text)]"
+          : "font-mono text-[10px] uppercase tracking-wider text-[var(--danger-text)]"
       }
     >
       {status}

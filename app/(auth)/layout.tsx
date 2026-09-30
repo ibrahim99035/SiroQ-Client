@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-paper">
-      <div className="relative hidden w-[38%] overflow-hidden border-r border-hairline bg-[linear-gradient(165deg,#193935,#0d221f)] p-8 text-paper-raised lg:flex lg:flex-col">
+      <div className="relative hidden w-[38%] overflow-hidden border-r border-hairline bg-[linear-gradient(165deg,#193935,#0d221f)] p-8 text-[var(--on-brand)] lg:flex lg:flex-col">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(46,111,106,0.5),transparent_65%)]"
@@ -19,11 +19,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="text-[15px] font-semibold tracking-tight">SiroQ</span>
         </Link>
         <div className="relative z-10 my-auto">
-          <p className="max-w-xs font-mono text-xs leading-relaxed text-paper-raised/70">
+          <p className="max-w-xs font-mono text-xs leading-relaxed text-[var(--on-brand-muted)]">
             rig of a review floor: a visible chain of custody from staging to stamped report.
           </p>
         </div>
-        <p className="relative z-10 font-mono text-[11px] text-paper-raised/60">
+        <p className="relative z-10 font-mono text-[11px] text-[var(--on-brand-muted)]/80">
           secure access · sessions expire and can be revoked
         </p>
       </div>

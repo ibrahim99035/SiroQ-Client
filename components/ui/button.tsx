@@ -10,14 +10,14 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-[linear-gradient(180deg,var(--accent),var(--accent-strong))] text-white shadow-soft hover:shadow hover:brightness-[1.07]",
-        warm: "bg-[linear-gradient(180deg,#d08448,var(--accent-warm-strong))] text-white shadow-soft hover:shadow hover:brightness-[1.05]",
+        warm: "bg-[linear-gradient(180deg,var(--accent-warm-top),var(--accent-warm-strong))] text-white shadow-soft hover:shadow hover:brightness-[1.05]",
         secondary:
-          "bg-accent-muted text-ink hover:bg-[#d2e2dd]",
+          "bg-accent-muted text-ink hover:bg-[var(--accent-muted-hover)]",
         outline:
           "border border-hairline bg-paper-raised text-ink shadow-soft hover:border-accent hover:text-accent",
         ghost: "text-muted hover:bg-accent-soft hover:text-ink",
         destructive:
-          "bg-[linear-gradient(180deg,#b3563f,var(--status-rejected-fill))] text-white shadow-soft hover:shadow hover:brightness-[1.05]",
+          "bg-[linear-gradient(180deg,var(--danger-top),var(--status-rejected-fill))] text-white shadow-soft hover:shadow hover:brightness-[1.05]",
         link: "text-accent underline-offset-4 hover:underline",
       },
       size: {

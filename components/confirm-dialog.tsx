@@ -54,7 +54,7 @@ export function ConfirmDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {error ? (
-          <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+          <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]">
             {error}
           </p>
         ) : null}

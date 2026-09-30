@@ -182,7 +182,7 @@ export function FileDropzone({
       ) : null}
 
       {staged.some((s) => s.candidate.kind === null) ? (
-        <p role="alert" className="mt-3 border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+        <p role="alert" className="mt-3 border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]">
           One or more files were rejected for the wrong file type. Remove them before submitting.
         </p>
       ) : null}
@@ -201,7 +201,7 @@ export function FileDropzone({
 function FileStatus({ candidate, rejected }: { candidate: UploadCandidate; rejected: boolean }) {
   if (rejected) {
     return (
-      <p className="flex items-start gap-1.5 text-[12px] leading-snug text-[#7a2e26]">
+      <p className="flex items-start gap-1.5 text-[12px] leading-snug text-[var(--danger-text)]">
         <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--status-rejected-fill)]" aria-hidden="true" />
         {candidate.reason}
       </p>
@@ -209,7 +209,7 @@ function FileStatus({ candidate, rejected }: { candidate: UploadCandidate; rejec
   }
   return (
     <p className="flex items-start gap-1.5 text-[12px] leading-snug text-muted">
-      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#245c42]" aria-hidden="true" />
+      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--success-text)]" aria-hidden="true" />
       Queued. Contents are checked on the server once the file is stored.
     </p>
   );

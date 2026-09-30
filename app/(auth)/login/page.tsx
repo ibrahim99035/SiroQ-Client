@@ -68,18 +68,18 @@ export default function LoginPage() {
           <Label htmlFor="email">Email</Label>
           <Input id="email" type="email" autoComplete="email" placeholder="you@pharmacy.org" {...form.register("email")} />
           {form.formState.errors.email ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.email.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.email.message}</p>
           ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="password">Password</Label>
           <Input id="password" type="password" autoComplete="current-password" placeholder="••••••••" {...form.register("password")} />
           {form.formState.errors.password ? (
-            <p className="text-xs text-[#7a2e26]">{form.formState.errors.password.message}</p>
+            <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.password.message}</p>
           ) : null}
         </div>
         {error ? (
-          <p role="alert" className="rounded-stamp border border-[var(--status-rejected)]/40 bg-[#fbf1ee] px-3 py-2 text-[13px] text-[#7a2e26]">
+          <p role="alert" className="rounded-stamp border border-[var(--status-rejected)]/40 bg-[var(--danger-tint)] px-3 py-2 text-[13px] text-[var(--danger-text)]">
             {error}
           </p>
         ) : null}

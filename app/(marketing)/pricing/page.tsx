@@ -52,7 +52,7 @@ export default function PricingPage() {
               }
             >
               {plan.recommended ? (
-                <span className="absolute -top-2.5 left-6 rounded-full bg-accent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white">
+                <span className="absolute -top-2.5 left-6 rounded-full bg-accent px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--on-accent)]">
                   Most common
                 </span>
               ) : null}
@@ -182,7 +182,6 @@ export default function PricingPage() {
           </div>
 
           <p className="mt-12 text-[13px] leading-relaxed text-muted">
-            Prices exclude tax. The agreement you sign is the one described on this page, plus the{" "}
             <Link href="/terms" className="text-accent underline underline-offset-2">
               terms of service
             </Link>{" "}

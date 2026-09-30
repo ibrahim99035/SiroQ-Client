@@ -206,7 +206,7 @@ function RawDataToggle({
         state.status === "loading" ? (
           <p className="mt-3 text-[13px] text-muted">Loading document…</p>
         ) : state.status === "error" ? (
-          <p role="alert" className="mt-3 text-[13px] text-[#7a2e26]">
+          <p role="alert" className="mt-3 text-[13px] text-[var(--danger-text)]">
             {state.message}
           </p>
         ) : state.status === "ready" ? (

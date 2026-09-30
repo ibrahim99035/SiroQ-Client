@@ -89,7 +89,7 @@ export default function SettingsPage() {
               <Label>Full name</Label>
               <Input autoComplete="name" {...form.register("name")} />
               {form.formState.errors.name ? (
-                <p className="text-xs text-[#7a2e26]">{form.formState.errors.name.message}</p>
+                <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.name.message}</p>
               ) : null}
             </div>
             <div className="space-y-1.5">
@@ -100,14 +100,14 @@ export default function SettingsPage() {
               </p>
             </div>
             {error ? (
-              <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+              <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]">
                 {error}
               </p>
             ) : null}
             <div className="flex items-center gap-3">
               <Button type="submit">Save profile</Button>
               {saved ? (
-                <span className="font-mono text-[11px] text-[#245c42]">saved ✓</span>
+                <span className="font-mono text-[11px] text-[var(--success-text)]">saved ✓</span>
               ) : null}
             </div>
           </form>

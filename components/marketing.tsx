@@ -7,6 +7,11 @@ import type { IconName } from "@/lib/marketing-content";
  * Shared furniture for the public site: the footer, and the handful of
  * primitives every page composes from. Keeping them here means an interior page
  * is a list of sections rather than a wall of utility classes.
+ *
+ * Server components, deliberately: the marketing tree is fully static and every
+ * page here is prerendered at build time. Marking these `"use client"` to read a
+ * locale from context would ship the JS for every primitive on every page for
+ * no benefit while the site is English-only.
  */
 
 const ICON_PATHS: Record<IconName, ReactNode> = {
@@ -78,7 +83,18 @@ export function Icon({ name, className }: { name: IconName; className?: string }
   );
 }
 
-const FOOTER_GROUPS: { title: string; links: { href: string; label: string }[] }[] = [
+/**
+ * Footer link groups.
+ *
+ * `/pricing` is unlinked for the same reason as in `marketing-nav.tsx`: the page
+ * and route still exist, but the numbers on it were placeholders pending pricing
+ * sign-off and should not be advertised from a primary surface. The entry is
+ * kept in the array rather than deleted so restoring it is one line.
+ */
+const footerGroups: {
+  title: string;
+  links: { href: string; label: string }[];
+}[] = [
   {
     title: "Product",
     links: [
@@ -119,7 +135,16 @@ const FOOTER_GROUPS: { title: string; links: { href: string; label: string }[] }
   },
 ];
 
+/**
+ * Routes withheld from the footer while pricing is unpublished.
+ *
+ * Kept as a set so the intent is greppable and the un-hiding is a one-line
+ * change rather than a hunt through JSX.
+ */
+const HIDDEN_FOOTER_ROUTES = new Set(["/pricing"]);
+
 export function MarketingFooter() {
+  const groups = footerGroups;
   return (
     <footer className="mt-24 border-t border-hairline bg-paper-raised">
       <div className="section py-14">
@@ -129,34 +154,42 @@ export function MarketingFooter() {
               <BrandLogo height={26} />
             </Link>
             <p className="mt-4 text-[13px] leading-relaxed text-muted">
-              An auditable review workspace for pharmacy dispensing records. Every filing keeps a
-              visible chain of custody from upload to signed-off result.
+              {"An auditable review workspace for pharmacy dispensing records. Every filing keeps a visible chain of custody from upload to signed-off result."}
             </p>
             <p className="mt-4 font-mono text-[11px] text-muted">
-              Built for dispensing data, reviewed by people who have to sign for it.
+              {"Built for dispensing data, reviewed by people who have to sign for it."}
             </p>
           </div>
 
-          {FOOTER_GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.title}>
               <p className="text-[13px] font-medium text-ink">{group.title}</p>
               <ul className="mt-3 space-y-2 text-[13px] text-muted">
-                {group.links.map((link) => (
-                  <li key={link.href}>
-                    <Link className="transition-colors hover:text-ink" href={link.href}>
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
+                {group.links
+                  .filter((link) => !HIDDEN_FOOTER_ROUTES.has(link.href))
+                  .map((link) => (
+                    <li key={link.href}>
+                      <Link
+                        className="transition-colors hover:text-ink"
+                        href={link.href}
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  ))}
               </ul>
             </div>
           ))}
         </div>
 
         <div className="mt-12 flex flex-col gap-3 border-t border-hairline pt-6 text-[12px] text-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} SiroQ. All rights reserved.</p>
+          <p>
+            {/* The sign is a glyph, not a word. */}
+            {"\u00a9"} {new Date().getFullYear()} SiroQ.{" "}
+            {"All rights reserved."}
+          </p>
           <p className="font-mono text-[11px]">
-            Tenant-scoped by default · every status change is an audit event
+            {"Tenant-scoped by default · every status change is an audit event"}
           </p>
         </div>
       </div>
@@ -183,7 +216,11 @@ export function PageHeader({
         {title}
       </h1>
       <div className="signature-rule mt-6" />
-      {lede ? <div className="mt-6 max-w-2xl text-[15px] leading-relaxed text-muted">{lede}</div> : null}
+      {lede ? (
+        <div className="mt-6 max-w-2xl text-[15px] leading-relaxed text-muted">
+          {lede}
+        </div>
+      ) : null}
       {children ? <div className="mt-8">{children}</div> : null}
     </header>
   );
@@ -204,8 +241,12 @@ export function SectionHead({
   return (
     <div className={align === "center" ? "mx-auto max-w-2xl text-center" : "max-w-2xl"}>
       {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-      <h2 className="mt-3 text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">{title}</h2>
-      {lede ? <p className="mt-4 text-[15px] leading-relaxed text-muted">{lede}</p> : null}
+      <h2 className="mt-3 text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">
+        {title}
+      </h2>
+      {lede ? (
+        <p className="mt-4 text-[15px] leading-relaxed text-muted">{lede}</p>
+      ) : null}
     </div>
   );
 }
@@ -235,8 +276,16 @@ export function Panel({
         </div>
       ) : null}
       <h3 className="mt-4 text-[15px] font-semibold text-ink">{title}</h3>
-      {description ? <p className="mt-2 text-[13px] leading-relaxed text-muted">{description}</p> : null}
-      {children ? <div className="mt-4 text-[13px] leading-relaxed text-muted">{children}</div> : null}
+      {description ? (
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">
+          {description}
+        </p>
+      ) : null}
+      {children ? (
+        <div className="mt-4 text-[13px] leading-relaxed text-muted">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -269,18 +318,22 @@ export function CtaBand({
           <>
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.09),transparent)]"
+              className="pointer-events-none absolute -end-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(255,255,255,0.09),transparent)]"
             />
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-[radial-gradient(closest-side,rgba(201,122,61,0.22),transparent)]"
+              className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-[radial-gradient(closest-side,rgba(201,122,61,0.22),transparent)]"
             />
           </>
         ) : null}
 
         <div className="relative max-w-2xl">
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-[28px]">{title}</h2>
-          <p className={`mt-4 text-[15px] leading-relaxed ${dark ? "text-white/75" : "text-muted"}`}>
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-[28px]">
+            {title}
+          </h2>
+          <p
+            className={`mt-4 text-[15px] leading-relaxed ${dark ? "text-white/75" : "text-muted"}`}
+          >
             {body}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -317,6 +370,11 @@ export function CtaBand({
  * Disclosure list. Built on native `<details>` so it works before hydration and
  * stays usable if the script never loads — the FAQ is the page most likely to be
  * read on a slow connection.
+ *
+ * `q` and `a` come from `lib/marketing-content.ts` as plain strings and are
+ * translated here. `a` is typed `ReactNode` because a couple of pages pass
+ * formatted answers; those render as-is, so keep FAQ answers unformatted if the
+ * question needs translating.
  */
 export function DisclosureList({ items }: { items: { q: string; a: ReactNode }[] }) {
   return (
@@ -334,7 +392,9 @@ export function DisclosureList({ items }: { items: { q: string; a: ReactNode }[]
               </svg>
             </span>
           </summary>
-          <div className="mt-3 max-w-2xl text-[13px] leading-relaxed text-muted">{item.a}</div>
+          <div className="mt-3 max-w-2xl text-[13px] leading-relaxed text-muted">
+            {item.a}
+          </div>
         </details>
       ))}
     </div>
@@ -345,7 +405,9 @@ export function DisclosureList({ items }: { items: { q: string; a: ReactNode }[]
 export function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="card px-5 py-5">
-      <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">{label}</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+        {label}
+      </p>
       <p className="stat-figure mt-1.5">{value}</p>
     </div>
   );

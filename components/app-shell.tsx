@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 /* ---------------------------------------------------------------------- */
 /* Brand                                                                  */
@@ -234,7 +235,8 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
         </svg>
       </button>
       <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">{topbarLabel(pathname)}</p>
-      <div className="ml-auto">
+      <div className="ms-auto flex items-center gap-1.5">
+        <ThemeToggle />
         <AccountMenu />
       </div>
     </header>

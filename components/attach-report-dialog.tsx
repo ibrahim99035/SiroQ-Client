@@ -151,7 +151,7 @@ export function AttachReportDialog({
           {error ? (
             <p
               role="alert"
-              className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]"
+              className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[var(--danger-text)]"
             >
               {error}
             </p>

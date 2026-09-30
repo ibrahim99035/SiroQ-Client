@@ -6,9 +6,9 @@ const STATE_META: Record<
   FileValidationState,
   { label: string; icon: typeof CheckCircle2; className: string }
 > = {
-  valid: { label: "Passed", icon: CheckCircle2, className: "text-[#245c42]" },
-  warning: { label: "Advisory", icon: AlertTriangle, className: "text-[#7a5c08]" },
-  invalid: { label: "Failed", icon: XCircle, className: "text-[#9c3c30]" },
+  valid: { label: "Passed", icon: CheckCircle2, className: "text-[var(--success-text)]" },
+  warning: { label: "Advisory", icon: AlertTriangle, className: "text-[var(--warning-text)]" },
+  invalid: { label: "Failed", icon: XCircle, className: "text-[var(--status-rejected-fill)]" },
 };
 
 /**

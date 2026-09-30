@@ -82,10 +82,10 @@ export default function ForgotPasswordPage() {
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" autoComplete="email" placeholder="you@pharmacy.org" {...form.register("email")} />
             {form.formState.errors.email ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.email.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.email.message}</p>
             ) : null}
           </div>
-          {error ? <p className="text-xs text-[#7a2e26]">{error}</p> : null}
+          {error ? <p className="text-xs text-[var(--danger-text)]">{error}</p> : null}
           <Button type="submit" className="w-full" size="lg" disabled={busy}>
             {busy ? "Sending…" : "Send reset instructions"}
           </Button>

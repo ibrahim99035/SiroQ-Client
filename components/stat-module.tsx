@@ -26,7 +26,7 @@ export function StatModule({
       className={cn(
         "rounded-card border px-5 py-5 shadow-soft transition-shadow duration-200 hover:shadow",
         featured
-          ? "border-transparent bg-[linear-gradient(150deg,#11302d,#1f5650)] text-paper-raised hover:shadow-lift"
+          ? "border-transparent bg-[linear-gradient(150deg,#11302d,#1f5650)] text-[var(--on-brand)] hover:shadow-lift"
           : "border-hairline/70 bg-paper-raised",
         className,
       )}
@@ -34,7 +34,7 @@ export function StatModule({
       <p
         className={cn(
           "font-mono text-[10px] uppercase tracking-[0.1em]",
-          featured ? "text-paper-raised/60" : "text-muted",
+          featured ? "text-[var(--on-brand-muted)]" : "text-muted",
         )}
       >
         {label}
@@ -44,12 +44,12 @@ export function StatModule({
         {trend ? (
           <Sparkline
             points={trend}
-            className={featured ? "text-paper-raised/60" : "text-accent"}
+            className={featured ? "text-[var(--on-brand-muted)]" : "text-accent"}
           />
         ) : null}
       </div>
       {sub ? (
-        <p className={cn("mt-1.5 text-xs", featured ? "text-paper-raised/65" : "text-muted")}>
+        <p className={cn("mt-1.5 text-xs", featured ? "text-[var(--on-brand-muted)]/90" : "text-muted")}>
           {sub}
         </p>
       ) : null}

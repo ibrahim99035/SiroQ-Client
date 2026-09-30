@@ -154,7 +154,7 @@ export default function NewApplicationPage() {
                   {...form.register("title")}
                 />
                 {form.formState.errors.title ? (
-                  <p className="text-xs text-[#7a2e26]">{form.formState.errors.title.message}</p>
+                  <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.title.message}</p>
                 ) : null}
               </div>
 
@@ -193,7 +193,7 @@ export default function NewApplicationPage() {
                     this is the only place a failure of the locked value can
                     surface. */}
                 {form.formState.errors.pharmacyId ? (
-                  <p className="text-xs text-[#7a2e26]">
+                  <p className="text-xs text-[var(--danger-text)]">
                     {form.formState.errors.pharmacyId.message}
                   </p>
                 ) : null}
@@ -207,14 +207,14 @@ export default function NewApplicationPage() {
                   }
                 />
                 {form.formState.errors.files ? (
-                  <p className="text-xs text-[#9c3c30]">{form.formState.errors.files.message}</p>
+                  <p className="text-xs text-[var(--status-rejected-fill)]">{form.formState.errors.files.message}</p>
                 ) : null}
               </div>
 
               {submitError ? (
                 <div
                   role="alert"
-                  className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]"
+                  className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[var(--danger-text)]"
                 >
                   <p>{submitError}</p>
                   {partialFiling ? (

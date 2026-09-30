@@ -216,8 +216,11 @@ async function main() {
   // --- Primary logo -------------------------------------------------------
   const lockup = stripTagline(cropToAlpha(await toInkAlpha(LOCKUP)), BADGE_FRACTION);
   const logo = await resizeTo(lockup, 96);
-  await put(path.join(OUT, "siroq-logo.png"), logo);
-  await put(path.join(OUT, "siroq-logo-reversed.png"), recolor(logo, [255, 255, 255]));
+  // Named `lockup` to match `BrandLogo`'s `variant="lockup"` and the constant
+  // above. It used to be written as `siroq-logo.png` while the component asked
+  // for `siroq-lockup.png`, so the header logo 404'd on every page.
+  await put(path.join(OUT, "siroq-lockup.png"), logo);
+  await put(path.join(OUT, "siroq-lockup-reversed.png"), recolor(logo, [255, 255, 255]));
 
   // The lockup is a single bitmap, so the wordmark cannot be recoloured per
   // link. A wordmark-only cut is what headers, the footer and email signatures

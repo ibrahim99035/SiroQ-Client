@@ -115,7 +115,7 @@ export function AssociationFormDialog({
             </Select>
           </Field>
           {error ? (
-            <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+            <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]">
               {error}
             </p>
           ) : null}
@@ -144,7 +144,7 @@ function Field({
     <div className="space-y-1.5">
       <Label>{label}</Label>
       {children}
-      {error ? <p className="text-xs text-[#7a2e26]">{error}</p> : null}
+      {error ? <p className="text-xs text-[var(--danger-text)]">{error}</p> : null}
     </div>
   );
 }

@@ -28,6 +28,31 @@
   --paper: #f4f6f5;
   --paper-raised: #ffffff;
   --ink: #16302e;
+  /*
+   * Text on the fixed dark brand panels — the auth split panel and the featured
+   * stat modules. Those surfaces are hardcoded teal gradients that do *not*
+   * change with the theme, so the text on them must not change either.
+   *
+   * `text-paper-raised` looks like the obvious choice and is wrong: it is a
+   * surface token (#ffffff light, #151d1c dark), so inverting with the theme
+   * put #151d1c text on a #193935 panel in dark mode — contrast 1.1.
+   *
+   * Deliberately theme-invariant: a single value, defined once in `:root`, never
+   * overridden in the dark block below.
+   */
+  --on-brand: #e9f2f0;
+  --on-brand-muted: #a9bfbb;
+  /* Label colour and hairline on a solid `--status-*-fill` stamp. The fills
+     are dark on the light palette and deliberately lightened on the dark one,
+     so the label has to flip with them or it drops to ~2:1. */
+  --stamp-ink: #ffffff;
+  --stamp-ring: rgba(255, 255, 255, 0.16);
+  /* Label on a solid `--accent` chip. `--accent` is dark on the light palette
+     and lightened on the dark one, so this flips with it. */
+  --on-accent: #ffffff;
+
+
+
   --accent: #2e6f6a;
   --accent-strong: #245b57;
   --accent-muted: #dfeae7;
@@ -57,6 +82,139 @@
   --brand-ink: #023e2f;
   --brand-deep: #052a21;
   --brand-line: rgba(255, 255, 255, 0.14);
+
+  /*
+   * Semantic text/fill tokens.
+   *
+   * These existed only as hex literals inside components (37 copies of one
+   * error red alone), so none of them could follow a theme change. Anything
+   * that is painted as text or as a button surface gets a token here; raw hex
+   * is reserved for genuinely static decoration such as the auth gradient.
+   */
+  --placeholder-text: #8b9a97;
+  --danger-text: #7a2e26;
+  --danger-tint: #fbf1ee;
+  --danger-top: #b3563f;
+  --warning-text: #7a5c08;
+  --warning-border: #8a6d12;
+  --success-text: #245c42;
+  --accent-muted-hover: #d2e2dd;
+  --accent-warm-top: #d08448;
+  --surface-sunken: #ecefee;
+}
+
+/*
+ * Dark theme.
+ *
+ * Applied via `data-theme="dark"` on <html>, which the pre-paint script in
+ * `app/layout.tsx` sets from localStorage or the OS preference. The `:root`
+ * block above stays the light palette and remains the fallback when neither
+ * attribute is present (e.g. in a print stylesheet or a non-browser renderer).
+ *
+ * Two rules govern the values:
+ *
+ *  - Status hues get *lighter*, not darker. `pending-fill` is #7a5c08 on light
+ *    because white text sits on it; on a dark ground the same stamp needs a
+ *    lighter fill or the label disappears. The non-`-fill` variants stay the
+ *    mid-tone marks used for dots and timeline ticks.
+ *  - Surfaces get darker as they come forward, not lighter: `--paper` is the
+ *    ground, `--paper-raised` the card above it, `--surface-sunken` the inset
+ *    well beneath it.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #0d1211;
+  --paper-raised: #151d1c;
+  --surface-sunken: #101716;
+
+  --ink: #e6eeec;
+  --muted-text: #94a5a2;
+
+  --accent: #63ada5;
+  --accent-strong: #86c6bd;
+  --accent-muted: #1b2b29;
+  --accent-soft: #16211f;
+
+  --accent-warm: #d9975e;
+  --accent-warm-strong: #c07c43;
+
+  --hairline: #26322f;
+  --border-strong: #31403c;
+
+  --status-pending: #d2a13f;
+  --status-in-review: #5f9ed6;
+  --status-reported: #4fae7d;
+  --status-rejected: #d4695a;
+
+  --status-pending-fill: #e0b45c;
+  --status-in-review-fill: #86bce8;
+  --status-reported-fill: #7fcca3;
+  --status-rejected-fill: #e89083;
+    /* Lightened status fills need a dark label, not white. */
+    --stamp-ink: #1a1611;
+    --stamp-ring: rgba(0, 0, 0, 0.16);
+    --on-accent: #0f1e1d;
+
+
+  --overlay: rgba(0, 0, 0, 0.62);
+
+  --placeholder-text: #7d8f8b;
+  --danger-text: #f0a89c;
+  --danger-tint: #241a19;
+  --danger-top: #8f4438;
+  --warning-text: #e0b45c;
+  --warning-border: #8a6d12;
+  --success-text: #7fcca3;
+  --accent-muted-hover: #24332f;
+  --accent-warm-top: #b06f3e;
+}
+
+/*
+ * Follows the OS only while the visitor has expressed no preference. Once they
+ * toggle, `data-theme` is set explicitly and this stops applying.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    color-scheme: dark;
+
+    --paper: #0d1211;
+    --paper-raised: #151d1c;
+    --surface-sunken: #101716;
+    --ink: #e6eeec;
+    --muted-text: #94a5a2;
+    --accent: #63ada5;
+    --accent-strong: #86c6bd;
+    --accent-muted: #1b2b29;
+    --accent-soft: #16211f;
+    --accent-warm: #d9975e;
+    --accent-warm-strong: #c07c43;
+    --hairline: #26322f;
+    --border-strong: #31403c;
+    --status-pending: #d2a13f;
+    --status-in-review: #5f9ed6;
+    --status-reported: #4fae7d;
+    --status-rejected: #d4695a;
+    --status-pending-fill: #e0b45c;
+    --status-in-review-fill: #86bce8;
+    --status-reported-fill: #7fcca3;
+    --status-rejected-fill: #e89083;
+    /* Lightened status fills need a dark label, not white. */
+    --stamp-ink: #1a1611;
+    --stamp-ring: rgba(0, 0, 0, 0.16);
+    --on-accent: #0f1e1d;
+
+    --overlay: rgba(0, 0, 0, 0.62);
+    --placeholder-text: #7d8f8b;
+    --danger-text: #f0a89c;
+    --danger-tint: #241a19;
+    --danger-top: #8f4438;
+    --warning-text: #e0b45c;
+    --warning-border: #8a6d12;
+    --success-text: #7fcca3;
+    --accent-muted-hover: #24332f;
+    --accent-warm-top: #b06f3e;
+  }
 }
 
 @layer base {
@@ -142,8 +300,8 @@
   /* Stamped status badge: solid pill, minimal shadow, AA-contrast fill. */
   .stamp {
     @apply inline-flex items-center gap-1 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide;
-    color: #fff;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    color: var(--stamp-ink);
+    box-shadow: inset 0 0 0 1px var(--stamp-ring),
       0 1px 2px rgba(22, 48, 46, 0.18);
   }
   .stamp-pending {

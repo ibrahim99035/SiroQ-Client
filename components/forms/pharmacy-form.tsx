@@ -97,21 +97,21 @@ export function PharmacyFormDialog({
             <Label>Name</Label>
             <Input placeholder="e.g. Alder Street Pharmacy" {...form.register("name")} />
             {form.formState.errors.name ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.name.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.name.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
             <Label>Address</Label>
             <Input placeholder="401 Alder St, Portland, OR" {...form.register("address")} />
             {form.formState.errors.address ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.address.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.address.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
             <Label>License number</Label>
             <Input placeholder="PH-OR-44231" className="font-mono" {...form.register("licenseNumber")} />
             {form.formState.errors.licenseNumber ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.licenseNumber.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.licenseNumber.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -132,7 +132,7 @@ export function PharmacyFormDialog({
               </SelectContent>
             </Select>
             {form.formState.errors.associationId ? (
-              <p className="text-xs text-[#7a2e26]">{form.formState.errors.associationId.message}</p>
+              <p className="text-xs text-[var(--danger-text)]">{form.formState.errors.associationId.message}</p>
             ) : null}
           </div>
           <div className="space-y-1.5">
@@ -151,7 +151,7 @@ export function PharmacyFormDialog({
             </Select>
           </div>
           {error ? (
-            <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[#7a2e26]">
+            <p role="alert" className="border border-[var(--status-rejected)]/50 px-3 py-2 text-[13px] text-[var(--danger-text)]">
               {error}
             </p>
           ) : null}
