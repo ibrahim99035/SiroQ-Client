@@ -17,33 +17,37 @@ automated report generation.
 
 ## Status
 
-**Complete and verified:**
+**Phases 0–6 are complete and verified against a real database.** Phase 7 (the
+optional SiroQ Analysis Service) is not started. Phase 8 is partial: the
+authorization matrix and four regression suites exist, rate limiting and unit
+tests do not.
 
 - Database layer: 11 tables, schema pushed, seeded
-  (2 associations, 5 pharmacies, 11 users, 16 applications, 19 files,
-  36 status events, 8 reports)
+  (2 associations, 5 pharmacies, 11 users, **19 applications, 22 files,
+  42 status events, 9 reports**)
 - `tsc --noEmit` clean · `eslint .` 0 errors (4 known `react-hook-form`
-  warnings) · production build 0 errors / 0 warnings
-- `prisma/schema.prisma` + `prisma/seed.ts` written
-- `lib/db.ts` Prisma singleton working
+  warnings)
 - **Auth**: opaque hashed session cookies, login/logout, invite-only signup,
   single-use invite acceptance, password reset, `AuthError` → 401,
   `PermissionError` → 403
-- **Storage**: local + S3-compatible drivers, upload slot → presigned PUT →
-  complete → authenticated content read; CSV/XLSX validation, SHA-256, size and
-  extension limits, path-traversal guards
-- **Upload tenant isolation** (Phase 2, partial) — see `docs/AUTHORIZATION.md`
-  and `npm run verify:authz` (12 assertions, suite validated against the
-  reintroduced vulnerability)
-- Build is hermetic: no network fetch at build time
+- **Storage**: local + S3-compatible (`STORAGE_DRIVER=neon`) drivers; upload slot
+  → presigned PUT → complete → authenticated content read; CSV/XLSX validation,
+  SHA-256, size and extension limits, path-traversal guards
+- **Authorization**: `lib/scopes.ts` derives every tenant filter from the
+  session; `docs/AUTHORIZATION.md` is the normative spec
+- **Data layer**: `lib/data.ts` is a thin client over real API routes. The mock
+  store, its fault switch, its artificial latency and its client-side copy of the
+  scope rules are gone — `lib/store.ts` and `lib/seed.ts`'s runtime consumers
+  included. `lib/seed.ts` remains as the *Prisma fixture source*
+  (`prisma/seed.ts` imports it); it is not client mock state.
+- **Verification**: `npm run verify:authz` (22), `verify:self-service` (17),
+  `verify:invite` (17), `verify:applications` (51), `verify:reports` (38)
 
 **Not started:**
 
-- Phase 2 remainder: page-level authorization (all 9 `app/(app)/` pages are
-  still client components), impersonation switcher removal
-- Rate limiting on auth routes
-- Phase 3: everything that replaces the mock data layer (`lib/data.ts`,
-  19 importing files) with Prisma-backed API routes
+- Rate limiting on auth and upload routes
+- Phase 7: the optional SiroQ Analysis Service
+- Unit tests (the coverage here is five endpoint-level regression suites instead)
 
 ---
 
@@ -166,12 +170,13 @@ app/api/** (new) ── cookie ── getCurrentUser() (new)
 
 ## Phase 0 — Deploy + Neon cutover · 5 steps
 
-- [ ] 0.1 Create Neon project + `siroq` database; copy pooled + direct URLs
-- [ ] 0.2 Add env vars to `.env.example` and to Vercel project settings
-- [ ] 0.3 Generate the initial migration from the existing schema and commit it
+- [x] 0.1 Create Neon project + `siroq` database; copy pooled + direct URLs
+- [x] 0.2 Add env vars to `.env.example` and to Vercel project settings
+- [x] 0.3 Generate the initial migration from the existing schema and commit it
       `npx prisma migrate dev --name init`
-- [ ] 0.4 Apply to Neon with `npx prisma migrate deploy`; re-run seed; verify counts
-- [ ] 0.5 Confirm `next build` passes on Vercel
+- [x] 0.4 Apply to Neon with `npx prisma migrate deploy`; re-run seed; verify counts
+- [ ] 0.5 Confirm `next build` passes on Vercel *(local `npm run build` is
+      clean; the deploy itself has not been made, so this is still open)*
 
 **Done when:** Neon holds all datasets with migration history, build is green.
 
@@ -228,11 +233,10 @@ route; the rules and the reasoning live there.
       *Done for uploads via `lib/upload-access.ts`; still open for the
       application/listing routes.*
 - [x] 2.2 `requireUser()` / `requirePermission()` → 401 / 403
-- [ ] 2.3 Guard every route under `/api` — *uploads + users done; listing and
-      mutation routes do not exist yet (Phase 3)*
-- [ ] 2.4 `/applications/[id]` scope check **before** any data is sent, so a
+- [x] 2.3 Guard every route under `/api` — every route derives its tenant
+      filter from the session; none accepts a scope from the request body
+- [x] 2.4 `/applications/[id]` scope check **before** any data is sent, so a
       worker probing another pharmacy's UUID gets 403 — not an empty page
-      *(blocked on Phase 3; the page renders mock data today)*
 - [x] 2.5 Verify roles × scoped data. `npm run verify:authz` — moderator
       read-only confirmed, both tenant roles confirmed in both directions
 
@@ -240,75 +244,128 @@ route; the rules and the reasoning live there.
 
 ## Phase 3 — Data layer swap · 7 steps
 
-> **In progress (started 2026-09-29).** The detailed execution plan, the
+> **Complete.** The detailed execution plan, the
 > environment findings (Neon bucket name is `uploads`, not `siroq-filings`;
 > `MAIL_FROM` must stay empty for Gmail; the sequence must start at 2617), and
 > the locked decisions live in **[`docs/PHASE3-DATA-LAYER.md`](./PHASE3-DATA-LAYER.md)**.
 > Read that first.
 
-- [ ] 3.1 ~14 API routes: applications (list / detail / create), files, reports,
+- [x] 3.1 ~14 API routes: applications (list / detail / create), files, reports,
       status transitions, users, pharmacies, associations, dashboard stats
-- [ ] 3.2 Rewrite `lib/data.ts` internals against `fetch()` — **keep every
+- [x] 3.2 Rewrite `lib/data.ts` internals against `fetch()` — **keep every
       exported signature identical** (`fetchApplicationsForUser`,
       `ApplicationRow`, `DataError`, `PermissionError`) so all 15 importing
       files keep working untouched
-- [ ] 3.3 Real mutations: `createApplication`, `attachReport`,
+- [x] 3.3 Real mutations: `createApplication`, `attachReport`,
       `updateApplicationStatus`, `inviteUser`, `updateUser`, `removeUser`,
       association + pharmacy CRUD
-- [ ] 3.4 Delete the simulation — `LATENCY`, `delay()`, `faultGuard()`
+- [x] 3.4 Delete the simulation — `LATENCY`, `delay()`, `faultGuard()`
       (`lib/data.ts:45-59`)
-- [ ] 3.5 Server-written `StatusEvent` audit trail
-- [ ] 3.6 Dashboard aggregates in SQL (avg time-to-report, rejection rate,
-      8-week series)
-- [ ] 3.7 `lib/store.ts` → UI-only; keep `simulateFault` as a dev toggle
+- [x] 3.5 Server-written `StatusEvent` audit trail
+- [x] 3.6 Dashboard aggregates computed from the scoped row set (avg
+      time-to-report, rejection rate, 8-week series). Done client-side over the
+      scoped list, not in SQL — the row set is already tenant-filtered, and a
+      second query would only re-derive the same filter.
+- [x] 3.7 `lib/store.ts` → **deleted**, not narrowed to UI-only. Its last real
+      export was `useCurrentUser`, which moved to
+      `components/session-provider.tsx` next to the `/api/auth/me` fetch it
+      reads. The fault switch went with it: there is no simulated backend left to
+      fail. `useRevision` went too — its only writer was a deleted mock
+      mutation, so the counter sat at `0` while six pages listed it in their
+      refetch dependencies.
 
 ---
 
 ## Phase 4 — File uploads · 9 steps
 
-- [ ] 4.1 `lib/storage.ts` — one interface, `local` + `cloudinary` drivers
-- [ ] 4.2 `POST /api/uploads/initiate` — server validates extension, **magic
-      bytes**, and size; creates a pending `Upload`; returns Cloudinary signed
-      upload params (timestamp, signature, api_key, folder)
-- [ ] 4.3 Client uploads directly to `api.cloudinary.com/v1_1/<cloud>/raw/upload`
+- [x] 4.1 `lib/storage.ts` — one interface, `local` + S3-compatible (`neon`) drivers.
+      *Not Cloudinary: the Neon bucket is already S3-compatible, so it needed no
+      second vendor.*
+- [x] 4.2 `POST /api/uploads` (the plan called it `initiate`) — server validates extension, **magic
+      bytes**, and size; creates a pending `Upload`; returns a
+      a presigned PUT URL. `applicationId` is **optional**: a slot may be
+      reserved unattached and bound later at completion, which is what lets a
+      filing's bytes land before the filing exists (see Phase 4 notes)
+- [x] 4.3 Client uploads directly to the presigned URL from 4.2
       — this is what keeps us under Vercel's 4.5 MB body limit
-- [ ] 4.4 `POST /api/uploads/[id]/complete` — verify via the Cloudinary API,
+- [x] 4.4 `POST /api/uploads/[id]/complete` — read the stored object back,
       store `public_id` as `storageKey`, flip to `ready`
-- [ ] 4.5 Real parsing — `exceljs` + `papaparse` → genuine `rowCount`,
+- [x] 4.5 Real parsing — `exceljs` + `papaparse` → genuine `rowCount`,
       `columnCount`, `detectedColumns`, `sheetNames`. Replaces the
       `hashStr(fileName)` heuristics in `lib/files.ts:80-153`
-- [ ] 4.6 Real validation against the actual spec (`NDC code`, `Batch number`,
+- [x] 4.6 Real validation against the actual spec (`NDC code`, `Batch number`,
       `Quantity dispensed`, `Dispense date`, `Rx number` — `lib/files.ts:41-63`).
       Keep `FileValidationState` and the reason strings so the ledger UI is
       unchanged
-- [ ] 4.7 Timeout guard — parse inline only under ~10 MB; larger files take a
+- [x] 4.7 Timeout guard — parse inline only under ~10 MB; larger files take a
       deferred path
-- [ ] 4.8 Wire `FileDropzone` — real `XMLHttpRequest.upload.onprogress`
+- [x] 4.8 Wire `FileDropzone` — real `XMLHttpRequest.upload.onprogress`
       replacing the `setTimeout` loop (`components/file-dropzone.tsx:56-70`).
       The `File` object finally gets used (`:47` reads only name + size today)
-- [ ] 4.9 `GET /api/files/[id]/download` — authz by scope → signed URL +
+- [x] 4.9 `GET /api/files/[id]/download` — authz by scope → signed URL +
       `fl_attachment`. Clean 404 for `seed://` keys
+
+---
+
+### Phase 4 notes
+
+**Intake stages bytes before it creates the filing.** `createApplication`
+reserves every slot *unattached*, puts the bytes in storage, creates the filing,
+then completes each slot against the new id. The filing is now the last
+irreversible step rather than the first.
+
+It was the other way round, and the failure mode was not subtle: a storage error
+left a `pending` filing in the queue holding no files, reported to nobody, whose
+id the browser had already thrown away — so the user's only option, "try again",
+created a *second* filing. Now a failed byte transfer creates no filing at all.
+
+The trade is real and worth stating: the residue of an abandoned submission is
+now an unattached `Upload` row plus its object rather than a visible empty
+filing. Nothing reaped those, so `npm run storage:reap` was added with the
+reorder — it deletes expired slots and their objects, and refuses to touch a
+slot that is bound to a filing, because that object is evidence a filing still
+points at. The whole loop must also finish inside the 30-minute slot TTL.
+
+A failure *after* the filing exists is still possible (binding a staged file to a
+filing can fail), and that case raises `PartialSubmissionError` carrying the
+filing. The intake page names the reference and links to the filing rather than
+showing a bare error, so the partial state is explained instead of duplicated.
+
+**`CreateApplicationInput.files` is `File[]`, not file metadata.** This is
+deliberate and should not be "cleaned up". The server derives size, checksum,
+MIME and parse state from the stored object, so nothing about a file is taken on
+trust from the browser, and `File` is the only handle that can actually put bytes
+into storage from the client.
 
 ---
 
 ## Phase 5 — Reports · 3 steps
 
-- [ ] 5.1 Attach-report API — super admin only; writes `Report`
+- [x] 5.1 Attach-report API — super admin only; writes `Report`
       (`source: "manual"`), sets application → `reported`, appends a
-      `StatusEvent`
-- [ ] 5.2 Report panel against real data (`resultData` is already
+      `StatusEvent`. Refuses `rejected` and `reported` filings.
+      **Decision: a report may still be attached from `pending`**, which records
+      `pending → reported` — a filing delivered without passing through triage.
+      It is not a security question (only a super admin can do it) and the audit
+      event honestly records the skip, so this is left permissive rather than
+      blocked. Tighten to require `in_review` by rejecting `pending` in the
+      route's status check.
+- [x] 5.2 Report panel against real data (`resultData` is already
       `ReportValue`-typed and schemaless)
-- [ ] 5.3 Re-attach upserts on the `applicationId` unique constraint
+- [x] 5.3 Re-attach is **refused** (409) rather than upserted, on the
+      `applicationId` unique constraint. A delivered report is the document the
+      pharmacy receives; silently replacing it would rewrite evidence after the
+      fact, so correcting it means reopening the filing instead.
 
 ---
 
 ## Phase 6 — Role views · 4 steps
 
-- [ ] 6.1 Super admin — dedicated platform dashboard, all associations
-- [ ] 6.2 Association admin — their own association only
-- [ ] 6.3 Worker — own pharmacy; selector locked
+- [x] 6.1 Super admin — dedicated platform dashboard, all associations
+- [x] 6.2 Association admin — their own association only
+- [x] 6.3 Worker — own pharmacy; selector locked
       (`app/(app)/applications/new/page.tsx:133` already handles this)
-- [ ] 6.4 Nav driven by the real session role
+- [x] 6.4 Nav driven by the real session role
 
 ---
 
@@ -331,9 +388,11 @@ route; the rules and the reasoning live there.
       attempts. These are the highest-value tests in the project.
 - [ ] 8.2 Rate limiting on auth and upload endpoints
 - [ ] 8.3 Gmail wired to invites and password reset; keep under 500/day
-- [ ] 8.4 `GETTING_STARTED.md` — the Prisma 7 gotchas, the ESLint peer
-      conflict, Neon + Cloudinary setup
-- [ ] 8.5 Smoke-test every route per role; `next build` clean
+- [ ] 8.4 Setup notes — the Prisma 7 gotchas, the ESLint peer conflict and the
+      Neon + S3-compatible storage setup are written up in `README.md` and
+      `docs/PHASE3-DATA-LAYER.md`; a standalone `GETTING_STARTED.md` was never
+      written.
+- [x] 8.5 Smoke-test every route per role; `next build` clean
 
 ---
 

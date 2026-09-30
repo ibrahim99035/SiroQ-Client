@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createAssociation, updateAssociation } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import type { PharmacyAssociation } from "@/lib/types";
 
 const schema = z.object({

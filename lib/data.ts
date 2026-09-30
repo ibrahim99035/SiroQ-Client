@@ -2,12 +2,7 @@
 
 import { format, startOfWeek, subWeeks } from "date-fns";
 import { ApiError, apiFetch, apiSend } from "./client-api";
-import { markMutated, useAppStore } from "./store";
-import {
-  PermissionError,
-  can,
-  type PermissionResource,
-} from "./permissions";
+import { can, type PermissionResource } from "./permissions";
 import type {
   Application,
   ApplicationStatus,
@@ -20,16 +15,19 @@ import type {
 
 /**
  * -------------------------------------------------------------------------
- * Requis mock data layer.
+ * Requis data layer — the only place the browser talks to the API.
  *
  * Single source of truth for both SCOPING and MUTATION. Components never
- * filter mock arrays inline; every read goes through `fetch*ForUser(user)`
- * and every write through the `create/update/attach/...` functions below,
- * which enforce `can(user, action, resource)` first.
+ * filter arrays inline; every read goes through a `fetch*ForUser(user)` and
+ * every write through a `create/update/attach/...` function below.
  *
- * Queries are async with a simulated latency so every view exercises the
- * required loading skeleton. Set "simulate system fault" on to exercise the
- * required error states.
+ * The `ForUser(user)` suffix is a naming remnant from when scoping happened
+ * here against an in-memory array. It is kept because the shape of these
+ * functions is the app's contract, but the `user` argument is now unused and
+ * scope is decided server-side: every route derives the caller's tenants from
+ * the session and refuses anything else. A client cannot grant itself access,
+ * so this file deliberately contains no scope checks to keep in step with
+ * `lib/permissions.ts`.
  * -------------------------------------------------------------------------
  */
 
@@ -40,36 +38,6 @@ export class DataError extends Error {
     this.name = "DataError";
     this.code = code;
   }
-}
-
-const LATENCY = 260;
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, LATENCY + Math.floor(Math.random() * 90)));
-}
-
-/** Throws when the "simulate system fault" switch is on, to exercise error UIs. */
-function faultGuard(): void {
-  if (useAppStore.getState().simulateFault) {
-    throw new DataError(
-      "fault",
-      "The reference service is not responding. Submitted filings are safe and will reconcile when the service recovers.",
-    );
-  }
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-
-function nextIdWithPrefix(prefix: string, list: { id: string }[]): string {
-  let max = 0;
-  for (const item of list) {
-    const match = /-?(\d+)$/.exec(item.id);
-    if (match?.[1]) max = Math.max(max, parseInt(match[1], 10));
-  }
-  return `${prefix}${String(max + 1).padStart(3, "0")}`;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -202,62 +170,6 @@ export interface DashboardStats {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Scope enforcement                                                       */
-/* ---------------------------------------------------------------------- */
-
-function enforceApplicationScope(user: User, application: Application): void {
-  if (user.role === "super_admin" || user.role === "moderator") return;
-  if (user.role === "pharmacy_association_admin") {
-    if (application.associationId !== user.associationId) {
-      throw new PermissionError(
-        `This filing belongs to another association. ${user.name} can only review filings within their association.`,
-        user,
-        "viewAssociationData",
-      );
-    }
-    return;
-  }
-  if (user.role === "pharmacy_worker") {
-    if (application.pharmacyId !== user.pharmacyId) {
-      throw new PermissionError(
-        `This filing belongs to another pharmacy. ${user.name} can only view filings for their own pharmacy.`,
-        user,
-        "viewPharmacyData",
-      );
-    }
-  }
-}
-
-function getApplication(id: string): Application {
-  const application = useAppStore.getState().applications.find((a) => a.id === id);
-  if (!application) {
-    throw new DataError("not_found", `No filing with ID "${id}" exists in the current dataset.`);
-  }
-  return application;
-}
-
-/** Applications visible to `user`, newest first, in application scope only. */
-export function scopedApplications(user: User): Application[] {
-  const all = useAppStore.getState().applications;
-  let visible: Application[];
-  switch (user.role) {
-    case "super_admin":
-    case "moderator":
-      visible = all;
-      break;
-    case "pharmacy_association_admin":
-      visible = all.filter((a) => a.associationId === user.associationId);
-      break;
-    case "pharmacy_worker":
-      visible = all.filter((a) => a.pharmacyId === user.pharmacyId);
-      break;
-  }
-  return [...visible].sort(
-    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
-  );
-}
-
-/* ---------------------------------------------------------------------- */
 /* Queries                                                                */
 /* ---------------------------------------------------------------------- */
 
@@ -370,19 +282,6 @@ export async function fetchUsersForUser(_user: User): Promise<User[]> {
   }));
 }
 
-export async function fetchReportForApplication(
-  user: User,
-  applicationId: string,
-): Promise<Report | null> {
-  faultGuard();
-  await delay();
-  faultGuard();
-  const application = getApplication(applicationId);
-  enforceApplicationScope(user, application);
-  if (!application.reportId) return null;
-  return useAppStore.getState().reports.find((r) => r.id === application.reportId) ?? null;
-}
-
 export async function fetchDashboardForUser(user: User): Promise<DashboardStats> {
   const rows = await fetchApplicationsForUser(user);
   const applications = rows.map((r) => r.application);
@@ -414,7 +313,7 @@ export async function fetchDashboardForUser(user: User): Promise<DashboardStats>
     weekly,
     weeklyPending,
     weeklyRejected,
-    scopeLabel: scopeLabelFor(user),
+    scopeLabel: scopeLabelFor(user, rows),
   };
 }
 
@@ -433,20 +332,32 @@ function weeklySeries(applications: Application[], weeks: number): WeeklyPoint[]
   return points;
 }
 
-function scopeLabelFor(user: User): string {
+/**
+ * Names the slice of the ledger this dashboard is showing.
+ *
+ * The tenant's name is read off the rows already fetched for the stats rather
+ * than looked up separately: every filing carries its pharmacy and association,
+ * so the dashboard needs no second request. The cost is a tenant with no filings
+ * has no row to read a name from, and falls back to its role label — an empty
+ * dashboard that says "Association" instead of the association's name is an
+ * acceptable trade for not asking the server for something it would only
+ * sometimes have.
+ *
+ * This previously read the mock store's fixture ids (`assoc-002`) and compared
+ * them to real UUIDs, so the lookup never matched: every pharmacy worker was
+ * told their scope was "Unassigned pharmacy" no matter which pharmacy they
+ * belonged to.
+ */
+function scopeLabelFor(user: User, rows: ApplicationRow[]): string {
   switch (user.role) {
     case "super_admin":
       return "All associations";
     case "moderator":
       return "All associations · read-only";
-    case "pharmacy_association_admin": {
-      const association = useAppStore.getState().associations.find((a) => a.id === user.associationId);
-      return association ? association.name : "Association";
-    }
-    case "pharmacy_worker": {
-      const pharmacy = useAppStore.getState().pharmacies.find((p) => p.id === user.pharmacyId);
-      return pharmacy ? pharmacy.name : "Unassigned pharmacy";
-    }
+    case "pharmacy_association_admin":
+      return rows[0]?.association.name ?? "Association";
+    case "pharmacy_worker":
+      return rows[0]?.pharmacy.name ?? "Unassigned pharmacy";
   }
 }
 
@@ -457,28 +368,58 @@ function scopeLabelFor(user: User): string {
 export interface CreateApplicationInput {
   title: string;
   pharmacyId: string;
+  /**
+   * The staged `File` handles, not a client-authored `ApplicationFile`.
+   *
+   * This is deliberately `File[]` and not a list of metadata records: the server
+   * derives size, checksum, MIME and schema state from the stored object, so
+   * nothing about a file is taken on trust from the browser. `File` is also the
+   * only handle that can actually put bytes into storage from the client.
+   */
   files: File[];
 }
 
+/** A slot that has bytes in storage and is waiting to be bound to a filing. */
+interface PendingUpload {
+  completeUrl: string;
+  /** Only the local driver carries bytes to completion; presigned already has them. */
+  dataBase64?: string;
+}
+
 /**
- * One file: reserve a slot, send the bytes, then let the server verify them.
+ * Raised when a filing exists but not all of its files made it, so the caller
+ * can name the filing instead of showing a bare error.
  *
- * The three steps are not collapsible. `POST /api/uploads` reserves a key and
- * hands back a presigned PUT, so the bytes travel straight to object storage
- * instead of through this Next.js process (a 4 MB body would otherwise run into
- * Vercel's request limit). `POST /api/uploads/[id]/complete` then reads the
- * object back and derives size, checksum and schema validation from it — nothing
- * the browser claimed is stored.
+ * Without this the browser held a filing id it threw away: the user was told
+ * "try again", resubmitting created a *second* filing, and the first one sat in
+ * the queue with no files and nothing on screen pointing at it.
+ */
+export class PartialSubmissionError extends Error {
+  readonly application: Application;
+
+  constructor(message: string, application: Application) {
+    super(message);
+    this.name = "PartialSubmissionError";
+    this.application = application;
+  }
+}
+
+/**
+ * Reserves a slot and puts the bytes in storage, without naming a filing yet.
+ *
+ * The slot is deliberately left unattached. `POST /api/uploads` takes an
+ * optional `applicationId`, and `/api/uploads/[id]/complete` accepts one that
+ * overrides the slot's, so the bytes can land before there is anything to attach
+ * them to. Reserving against the filing up front would put the filing's
+ * existence ahead of its evidence, and a storage failure would then leave a
+ * pending filing that the queue can see but no one can explain.
  *
  * Both reserve modes are handled. `presigned` is the Neon driver: the browser
- * PUTs to object storage directly. `direct` is the local filesystem driver,
- * which has nowhere to presign to, so the bytes ride along in the completion
- * call instead.
- *
- * The slot is left `expired`/`failed` server-side if a step throws, so a partial
- * upload cannot masquerade as a completed one.
+ * PUTs straight to object storage, so a 4 MB body never passes through this
+ * Next.js process. `direct` is the local filesystem driver, which has nowhere
+ * to presign to, so the bytes are held and travel in the completion call.
  */
-async function uploadFileForApplication(file: File, applicationId: string): Promise<void> {
+async function stageFileForUpload(file: File): Promise<PendingUpload> {
   const reserved = await apiSend<{
     ok: true;
     uploadId: string;
@@ -490,7 +431,6 @@ async function uploadFileForApplication(file: File, applicationId: string): Prom
     fileName: file.name,
     declaredBytes: file.size,
     mimeType: file.type || undefined,
-    applicationId,
   });
 
   if (reserved.mode === "presigned") {
@@ -513,13 +453,26 @@ async function uploadFileForApplication(file: File, applicationId: string): Prom
         put.status,
       );
     }
-    await apiSend(reserved.completeUrl, "POST", { applicationId });
-    return;
+    return { completeUrl: reserved.completeUrl };
   }
 
-  await apiSend(reserved.completeUrl, "POST", {
+  return { completeUrl: reserved.completeUrl, dataBase64: await fileToBase64(file) };
+}
+
+/**
+ * Binds a staged slot to its filing, letting the server verify the stored bytes.
+ *
+ * This is where `ApplicationFile` rows actually get written: the completion
+ * handler reads the object back and derives size, checksum and schema state
+ * from it, so nothing the browser claimed is stored.
+ */
+async function completeStagedUpload(
+  pending: PendingUpload,
+  applicationId: string,
+): Promise<void> {
+  await apiSend(pending.completeUrl, "POST", {
     applicationId,
-    dataBase64: await fileToBase64(file),
+    ...(pending.dataBase64 ? { dataBase64: pending.dataBase64 } : {}),
   });
 }
 
@@ -541,23 +494,31 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Creates a filing, then uploads each file against the new id.
+ * Creates a filing from bytes that are already in storage.
  *
- * The order is not incidental. The server allocates the `reference` on insert
- * and validates a file only once its bytes are in storage — `/api/uploads/[id]/
- * complete` re-derives size, checksum and schema results from the stored object
- * and writes the `ApplicationFile`. So a file cannot be attached to a filing
- * that does not exist yet, and the returned row's `files` is whatever the server
- * actually accepted, not what the browser claimed.
+ * The order is deliberate: stage every file first, then create the filing, then
+ * bind the files to it. The filing is the commit point, and it is now the *last*
+ * irreversible step rather than the first.
  *
- * `input.files` therefore carries the staged `File` handles, not a
- * client-authored `ApplicationFile`: everything the UI shows about a file now
- * comes back from the server.
+ * Creating first and uploading after meant a storage failure left a pending
+ * filing in the queue holding nothing, reported to no one, reachable only by a
+ * id the browser had thrown away. Under this order a failed byte upload leaves
+ * no filing at all, and the only residue is an unattached slot that
+ * `npm run storage:reap` collects.
+ *
+ * Binding can still fail after the filing exists, so that case raises
+ * `PartialSubmissionError` carrying the filing rather than an anonymous
+ * failure — the caller can then tell the user which reference to expect.
  */
 export async function createApplication(
   input: CreateApplicationInput,
   _user: User,
 ): Promise<Application> {
+  const staged: PendingUpload[] = [];
+  for (const file of input.files) {
+    staged.push(await stageFileForUpload(file));
+  }
+
   const created = await apiSend<ApiApplicationRow>(
     "/api/applications",
     "POST",
@@ -565,8 +526,17 @@ export async function createApplication(
   );
   const application = apiApplicationRow(created).application;
 
-  for (const file of input.files) {
-    await uploadFileForApplication(file, application.id);
+  try {
+    for (const pending of staged) {
+      await completeStagedUpload(pending, application.id);
+    }
+  } catch (reason) {
+    throw new PartialSubmissionError(
+      reason instanceof Error
+        ? `${reason.message} Filing ${application.reference} was created, but not every file attached to it.`
+        : `Filing ${application.reference} was created, but not every file attached to it.`,
+      application,
+    );
   }
 
   // Re-read rather than patching the local copy: the server is now the only
@@ -583,7 +553,13 @@ export interface AttachReportInput {
    * a client-managed object claimed.
    */
   document: string;
-  status?: "draft" | "final";
+  /**
+   * Always `final`, and optional because the server defaults to it. A manually
+   * entered report is delivered the moment it is attached, so the type does not
+   * offer `draft`: advertising it would let a caller compile against a value the
+   * route rejects with a 400.
+   */
+  status?: "final";
   note?: string;
 }
 
@@ -716,33 +692,6 @@ export async function updateOwnProfile(patch: {
 
 export async function removeUser(userId: string, _user: User): Promise<void> {
   await apiSend(`/api/users/${userId}`, "DELETE");
-}
-
-/** Public/marketing signup: creates a scoped worker account and returns it. */
-export function createAccount(input: { name: string; email: string }): User {
-  const state = useAppStore.getState();
-  if (state.users.some((u) => u.email.toLowerCase() === input.email.toLowerCase())) {
-    throw new DataError("not_found", "An account with that email already exists.");
-  }
-  const id = nextIdWithPrefix("u-", state.users);
-  const created: User = {
-    id,
-    name: input.name.trim(),
-    email: input.email.trim().toLowerCase(),
-    role: "pharmacy_worker",
-    status: "active",
-    createdAt: nowIso(),
-  };
-  useAppStore.setState({ users: [...state.users, created] });
-  markMutated();
-  return created;
-}
-
-export function findUserByEmail(email: string): User | null {
-  const match = useAppStore
-    .getState()
-    .users.find((u) => u.email.toLowerCase() === email.toLowerCase().trim());
-  return match ?? null;
 }
 
 export interface CreateAssociationInput {

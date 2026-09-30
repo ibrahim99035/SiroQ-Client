@@ -3,7 +3,7 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { EmptyState, SystemError, TableSkeleton, useRevision } from "@/components/data-states";
+import { EmptyState, SystemError, TableSkeleton } from "@/components/data-states";
 import { UserFormDialog } from "@/components/forms/user-form";
 import { PageHeading } from "@/components/page-heading";
 import { PermissionGate } from "@/components/permission-gate";
@@ -15,7 +15,7 @@ import {
   fetchUsersForUser,
   removeUser,
 } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import { ROLE_LABELS, type User, type UserStatus } from "@/lib/types";
 
 /**
@@ -34,18 +34,17 @@ export function UserDirectory({
   rule?: "warm" | "hairline";
 }) {
   const actor = useCurrentUser();
-  const revision = useRevision();
   const users = useResource(
     () => fetchUsersForUser(actor!),
-    [actor?.id, revision, "users"],
+    [actor?.id, "users"],
   );
   const associations = useResource(
     () => fetchAssociationsForUser(actor!),
-    [actor?.id, revision, "associations"],
+    [actor?.id, "associations"],
   );
   const pharmacies = useResource(
     () => fetchPharmaciesForUser(actor!),
-    [actor?.id, revision, "pharmacies"],
+    [actor?.id, "pharmacies"],
   );
 
   const [editing, setEditing] = React.useState<User | null>(null);

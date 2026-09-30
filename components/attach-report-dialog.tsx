@@ -13,7 +13,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { attachReport } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 
 /** Mirrors the server's own limit so an oversized file is refused before upload. */
 const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;

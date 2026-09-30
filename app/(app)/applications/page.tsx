@@ -2,20 +2,19 @@
 
 import Link from "next/link";
 import { ApplicationTable } from "@/components/application-table";
-import { EmptyState, SystemError, TableSkeleton, useRevision } from "@/components/data-states";
+import { EmptyState, SystemError, TableSkeleton } from "@/components/data-states";
 import { PageHeading } from "@/components/page-heading";
 import { VisibleWhen } from "@/components/permission-gate";
 import { Button } from "@/components/ui/button";
 import { useResource } from "@/components/use-resource";
 import { fetchApplicationsForUser } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 
 export default function ApplicationsPage() {
   const user = useCurrentUser();
-  const revision = useRevision();
   const { data, state, error, reload } = useResource(
     () => fetchApplicationsForUser(user!),
-    [user?.id, revision],
+    [user?.id],
   );
 
   if (!user) return null;

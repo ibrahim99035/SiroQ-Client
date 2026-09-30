@@ -1,13 +1,11 @@
 "use client";
 
 import { AlertTriangle, CircleSlash2, FileWarning, RotateCw } from "lucide-react";
-import { useRevision } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 
-export { useRevision };
 
 /* ---------------------------------------------------------------------- */
 /* Loading                                                               */

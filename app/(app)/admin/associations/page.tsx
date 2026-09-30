@@ -3,22 +3,21 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { EmptyState, SystemError, TableSkeleton, useRevision } from "@/components/data-states";
+import { EmptyState, SystemError, TableSkeleton } from "@/components/data-states";
 import { AssociationFormDialog } from "@/components/forms/association-form";
 import { PageHeading } from "@/components/page-heading";
 import { PermissionGate } from "@/components/permission-gate";
 import { Button } from "@/components/ui/button";
 import { useResource } from "@/components/use-resource";
 import { deleteAssociation, fetchAssociationsForUser, type AssociationRow } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import type { PharmacyAssociation } from "@/lib/types";
 
 export default function AdminAssociationsPage() {
   const user = useCurrentUser();
-  const revision = useRevision();
   const { data, state, error, reload } = useResource(
     () => fetchAssociationsForUser(user!),
-    [user?.id, revision],
+    [user?.id],
   );
 
   const [editing, setEditing] = React.useState<PharmacyAssociation | null>(null);

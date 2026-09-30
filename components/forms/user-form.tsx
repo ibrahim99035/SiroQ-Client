@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { inviteUser, updateUser } from "@/lib/data";
 import { can } from "@/lib/permissions";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import type { Pharmacy, PharmacyAssociation, Role, User, UserStatus } from "@/lib/types";
 
 const schema = z.object({

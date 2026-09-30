@@ -35,6 +35,10 @@
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { createApplication, PartialSubmissionError } from "../lib/data";
+import { deleteObject, getObject, putObject, storageDriver } from "../lib/storage";
+import { reapExpiredUploads } from "./reap-expired-uploads";
+import type { User } from "../lib/types";
 
 function env(name: string): string {
   return (process.env[name] ?? "").replace(/^['"]|['"]$/g, "");
@@ -379,6 +383,218 @@ async function main() {
     check("a nonexistent id is a 404", unknownId.status === 404, unknownId.status);
     const malformedId = await request(superCookie, "GET", "/api/applications/not-a-uuid");
     check("a malformed id is a 404, not a 500", malformedId.status === 404, malformedId.status);
+    /* ------------------------------------------------------------------ */
+    /* Intake ordering and abandoned-slot reaping                         */
+    /* ------------------------------------------------------------------ */
+    //
+    // Staging bytes *before* the filing exists is the guarantee this flow
+    // rests on, and no endpoint-level check can see it: the ordering lives in
+    // the client function, not in a route. So the function is exercised here
+    // directly, with `fetch` patched to fail exactly one step at a time.
+    //
+    // The driver under test is `neon`, where bytes travel as a presigned PUT to
+    // object storage. That PUT is the byte transfer and nothing else, so
+    // failing it is a faithful stand-in for storage being unavailable.
+    const intakeUser = await prisma.user.findUniqueOrThrow({
+      where: { email: WORKER },
+      select: { id: true, email: true, name: true, role: true, pharmacyId: true, associationId: true, status: true },
+    });
+    const intakeCookie = await login(WORKER);
+    const realFetch = globalThis.fetch;
+
+    const urlOf = (input: RequestInfo | URL): string =>
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const methodOf = (init?: RequestInit): string => (init?.method ?? "GET").toUpperCase();
+    const probeCsv = (name: string): File => new File(["drug,qty\ninsulin,2\n"], name, { type: "text/csv" });
+
+    // `lib/data` is written for the browser and assumes it in two ways that are
+    // both correct there and unavailable here: it resolves API paths relative to
+    // the page origin, and it lets the httpOnly session ride along on
+    // same-origin fetch. So this adapter gives it an origin and a cookie jar.
+    //
+    // The cookie is attached only to this app. Forwarding it to the presigned
+    // PUT would change the signed request and break the upload for a reason
+    // that has nothing to do with what is being tested.
+    const asBrowserFetch = (inner: typeof fetch): typeof fetch =>
+      (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = urlOf(input);
+        const absolute = url.startsWith("/") ? `${BASE_URL}${url}` : url;
+        const headers = new Headers(init?.headers);
+        if (absolute.startsWith(BASE_URL) && !headers.has("cookie")) {
+          headers.set("cookie", intakeCookie);
+        }
+        return inner(absolute, { ...init, headers });
+      }) as typeof fetch;
+
+    // --- control: the staged flow works before its failure modes mean anything
+    globalThis.fetch = asBrowserFetch(realFetch);
+    const control = await createApplication(
+      { title: "Intake probe: control", pharmacyId: worker.pharmacyId, files: [probeCsv("control.csv")] },
+      intakeUser as unknown as User,
+    );
+    createdIds.push(control.id);
+    globalThis.fetch = realFetch;
+    const controlFiles = await prisma.applicationFile.count({ where: { applicationId: control.id } });
+    check("the staged flow attaches files to the filing it creates", controlFiles === 1, controlFiles);
+
+    // --- a byte failure must not create a filing -------------------------
+    const beforeByteFailure = await prisma.application.count();
+    globalThis.fetch = asBrowserFetch((async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (methodOf(init) === "PUT") throw new TypeError("fetch failed: storage unavailable");
+      return realFetch(input, init);
+    }) as typeof fetch);
+
+    let byteFailure: unknown = null;
+    let putAttempted = false;
+    try {
+      const counting = globalThis.fetch;
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (methodOf(init) === "PUT") putAttempted = true;
+        return counting(input, init);
+      }) as typeof fetch;
+      await createApplication(
+        { title: "Intake probe: byte failure", pharmacyId: worker.pharmacyId, files: [probeCsv("byte-failure.csv")] },
+        intakeUser as unknown as User,
+      );
+    } catch (error) {
+      byteFailure = error;
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    // Guards the two assertions below: without the bytes actually reaching for
+    // storage, a 401 from the reserve call would make them pass for free.
+    check("the byte-failure probe really attempted the byte transfer", putAttempted);
+
+    const afterByteFailure = await prisma.application.count();
+    check(
+      "a failed byte transfer creates no filing at all",
+      afterByteFailure === beforeByteFailure,
+      { beforeByteFailure, afterByteFailure },
+    );
+    check(
+      "a byte failure is not reported as a partial submission",
+      !(byteFailure instanceof PartialSubmissionError),
+      byteFailure instanceof Error ? byteFailure.message : byteFailure,
+    );
+
+    // --- a bind failure names the filing it left behind ------------------
+    globalThis.fetch = asBrowserFetch((async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (methodOf(init) === "POST" && urlOf(input).includes("/complete")) {
+        throw new TypeError("fetch failed: bind unavailable");
+      }
+      return realFetch(input, init);
+    }) as typeof fetch);
+
+    let bindFailure: unknown = null;
+    try {
+      await createApplication(
+        { title: "Intake probe: bind failure", pharmacyId: worker.pharmacyId, files: [probeCsv("bind-failure.csv")] },
+        intakeUser as unknown as User,
+      );
+    } catch (error) {
+      bindFailure = error;
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    check(
+      "a bind failure raises PartialSubmissionError so the caller can name the filing",
+      bindFailure instanceof PartialSubmissionError,
+      bindFailure instanceof Error ? bindFailure.message : bindFailure,
+    );
+
+    if (bindFailure instanceof PartialSubmissionError) {
+      const orphan = bindFailure.application;
+      createdIds.push(orphan.id);
+      const persisted = await prisma.application.findUnique({
+        where: { id: orphan.id },
+        select: { reference: true, _count: { select: { files: true } } },
+      });
+      check("the partial filing really exists", persisted !== null, orphan.reference);
+      check(
+        "the partial filing carries no files, so it is honestly incomplete",
+        persisted?._count.files === 0,
+        persisted?._count.files,
+      );
+      check(
+        "the error message names the filing's reference",
+        bindFailure.message.includes(orphan.reference),
+        bindFailure.message,
+      );
+    }
+
+    // --- an abandoned slot is reaped; a live one is not -------------------
+    const reapedKey = `verify/reap/${Date.now()}-expired.csv`;
+    const keptKey = `verify/reap/${Date.now()}-live.csv`;
+    await putObject(reapedKey, Buffer.from("drug,qty\ninsulin,2\n"), "text/csv");
+    await putObject(keptKey, Buffer.from("drug,qty\ninsulin,2\n"), "text/csv");
+
+    const expiredSlot = await prisma.upload.create({
+      data: {
+        originalName: "abandoned.csv",
+        kind: "csv",
+        mimeType: "text/csv",
+        declaredBytes: BigInt(20),
+        storageKey: reapedKey,
+        storageDriver: storageDriver(),
+        state: "pending",
+        uploadedById: intakeUser.id,
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const liveSlot = await prisma.upload.create({
+      data: {
+        originalName: "in-flight.csv",
+        kind: "csv",
+        mimeType: "text/csv",
+        declaredBytes: BigInt(20),
+        storageKey: keptKey,
+        storageDriver: storageDriver(),
+        state: "pending",
+        uploadedById: intakeUser.id,
+        expiresAt: new Date(Date.now() + 60 * 60_000),
+      },
+    });
+
+    const reap = await reapExpiredUploads();
+    check("the reaper collected the abandoned slot", reap.expiredSlots >= 1, reap);
+    check("the reaper deleted the abandoned object", (await getObject(reapedKey)) === null, reapedKey);
+    check(
+      "the abandoned slot row is gone",
+      (await prisma.upload.count({ where: { id: expiredSlot.id } })) === 0,
+    );
+    check("the in-flight slot is untouched", (await prisma.upload.count({ where: { id: liveSlot.id } })) === 1);
+    check("the in-flight object is untouched", (await getObject(keptKey)) !== null, keptKey);
+
+    // A slot that was bound to a filing must never be reaped, even when its
+    // TTL has passed, or reaping would delete evidence a filing still points at.
+    const attachedSlot = await prisma.upload.create({
+      data: {
+        originalName: "attached.csv",
+        kind: "csv",
+        mimeType: "text/csv",
+        declaredBytes: BigInt(20),
+        storageKey: reapedKey.replace("expired", "attached"),
+        storageDriver: storageDriver(),
+        state: "ready",
+        uploadedById: intakeUser.id,
+        applicationId: createdIds.length > 0 ? createdIds[0] : null,
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+    await reapExpiredUploads();
+    check(
+      "an expired but bound slot is left alone",
+      (await prisma.upload.count({ where: { id: attachedSlot.id } })) === 1,
+    );
+
+    await prisma.upload.deleteMany({ where: { id: { in: [liveSlot.id, attachedSlot.id] } } });
+    await Promise.all([
+      deleteObject(keptKey).catch(() => undefined),
+      deleteObject(attachedSlot.storageKey).catch(() => undefined),
+    ]);
+
   } finally {
     if (createdIds.length > 0) {
       // Cascades to ApplicationFile and StatusEvent.

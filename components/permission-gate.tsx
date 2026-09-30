@@ -1,7 +1,7 @@
 "use client";
 
 import { can, type PermissionAction, type PermissionResource } from "@/lib/permissions";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import { NotAuthorized } from "@/components/data-states";
 
 /**

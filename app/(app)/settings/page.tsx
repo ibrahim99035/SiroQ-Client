@@ -10,9 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { updateOwnProfile } from "@/lib/data";
-import { useSession } from "@/components/session-provider";
-import { useAssociations, useCurrentUser, usePharmacies } from "@/lib/store";
+import { useResource } from "@/components/use-resource";
+import {
+  fetchAssociationsForUser,
+  fetchPharmaciesForUser,
+  updateOwnProfile,
+} from "@/lib/data";
+import { useCurrentUser, useSession } from "@/components/session-provider";
 import { ROLE_LABELS } from "@/lib/types";
 
 const schema = z.object({
@@ -23,8 +27,18 @@ type FormValues = z.infer<typeof schema>;
 export default function SettingsPage() {
   const actor = useCurrentUser();
   const session = useSession();
-  const associations = useAssociations();
-  const pharmacies = usePharmacies();
+  // Scoped like every other read in the app: the server decides which
+  // associations and pharmacies this session may see, so the profile card shows
+  // the same names the rest of the interface does. It used to read the mock
+  // store, where a user's tenant was whatever the fixture happened to say.
+  const associations = useResource(
+    () => fetchAssociationsForUser(actor!),
+    [actor?.id, "associations"],
+  );
+  const pharmacies = useResource(
+    () => fetchPharmaciesForUser(actor!),
+    [actor?.id, "pharmacies"],
+  );
   const [saved, setSaved] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -35,8 +49,9 @@ export default function SettingsPage() {
 
   if (!actor) return null;
 
-  const associationName = associations.find((a) => a.id === actor.associationId)?.name;
-  const pharmacy = pharmacies.find((p) => p.id === actor.pharmacyId);
+  const associationName = associations.data?.find((a) => a.association.id === actor.associationId)
+    ?.association.name;
+  const pharmacy = pharmacies.data?.find((p) => p.pharmacy.id === actor.pharmacyId)?.pharmacy;
 
   const onSubmit = async (values: FormValues) => {
     // The rename is a real request now, so it can fail (offline, or an email
@@ -107,6 +122,9 @@ export default function SettingsPage() {
                 label="Role"
                 value={ROLE_LABELS[actor.role]}
               />
+              {/* Loading renders as "—" rather than nothing: reading from the
+                  real API means the tenant name arrives a beat after the page,
+                  and hiding the row until then flashes it out of the list. */}
               {associationName ? (
                 <ScopeRow
                   icon={Building2}
@@ -121,7 +139,12 @@ export default function SettingsPage() {
                   value={pharmacy.name}
                 />
               ) : (
-                <ScopeRow icon={MapPin} label="Pharmacy" value="Unassigned" muted />
+                <ScopeRow
+                  icon={MapPin}
+                  label="Pharmacy"
+                  value={pharmacies.state === "loading" ? "—" : "Unassigned"}
+                  muted
+                />
               )}
             </dl>
           </section>

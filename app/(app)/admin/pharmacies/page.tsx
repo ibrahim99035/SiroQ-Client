@@ -3,7 +3,7 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import * as React from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { EmptyState, SystemError, TableSkeleton, useRevision } from "@/components/data-states";
+import { EmptyState, SystemError, TableSkeleton } from "@/components/data-states";
 import { PharmacyFormDialog } from "@/components/forms/pharmacy-form";
 import { PageHeading } from "@/components/page-heading";
 import { PermissionGate } from "@/components/permission-gate";
@@ -15,19 +15,18 @@ import {
   fetchPharmaciesForUser,
   type PharmacyRow,
 } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import type { Pharmacy } from "@/lib/types";
 
 export default function AdminPharmaciesPage() {
   const user = useCurrentUser();
-  const revision = useRevision();
   const pharmacies = useResource(
     () => fetchPharmaciesForUser(user!),
-    [user?.id, revision, "pharmacies"],
+    [user?.id, "pharmacies"],
   );
   const associations = useResource(
     () => fetchAssociationsForUser(user!),
-    [user?.id, revision, "associations"],
+    [user?.id, "associations"],
   );
 
   const [editing, setEditing] = React.useState<Pharmacy | null>(null);

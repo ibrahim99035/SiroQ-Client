@@ -2,9 +2,8 @@
 
 import * as React from "react";
 import { Check, X } from "lucide-react";
-import { useAppStore } from "@/lib/store";
 import { fmtDateTime } from "@/lib/utils";
-import type { Application, StatusEvent, User } from "@/lib/types";
+import type { Application, StatusEvent } from "@/lib/types";
 
 /**
  * Status timeline — an audit trail of every status change: who moved the
@@ -12,14 +11,13 @@ import type { Application, StatusEvent, User } from "@/lib/types";
  * moment on the filing screen.
  */
 export function StatusTimeline({ application }: { application: Application }) {
-  const users = useAppStore((s) => s.users);
   const upload = application.history.find((e) => e.to === "pending");
 
   if (application.status === "rejected") {
     return (
 <ol className="card px-5 py-6">
-        {upload ? <StepRow stage="done" label="Uploaded" event={upload} users={users} /> : null}
-        <RejectedRow application={application} users={users} />
+        {upload ? <StepRow stage="done" label="Uploaded" event={upload} /> : null}
+        <RejectedRow application={application} />
       </ol>
     );
   }
@@ -44,7 +42,6 @@ export function StatusTimeline({ application }: { application: Application }) {
             stage={reached ? (isCurrent ? "current" : "done") : "upcoming"}
             label={stage.label}
             event={event}
-            users={users}
             note={
               isCurrent
                 ? currentIndex === 0
@@ -65,13 +62,11 @@ function StepRow({
   stage,
   label,
   event,
-  users,
   note,
 }: {
   stage: StageState;
   label: string;
   event?: StatusEvent;
-  users: User[];
   note?: string;
 }) {
   return (
@@ -101,7 +96,7 @@ function StepRow({
         </p>
         {event ? (
           <p className="mt-0.5 font-mono text-[11px] text-muted">
-            {actorName(event.changedByName, event.changedById, users)} · {fmtDateTime(event.changedAt)}
+            {actorName(event.changedByName)} · {fmtDateTime(event.changedAt)}
           </p>
         ) : (
           <p className="mt-0.5 font-mono text-[11px] text-muted">Not yet reached</p>
@@ -112,7 +107,7 @@ function StepRow({
   );
 }
 
-function RejectedRow({ application, users }: { application: Application; users: User[] }) {
+function RejectedRow({ application }: { application: Application }) {
   const reject = application.history.find((e) => e.to === "rejected");
   return (
     <li className="relative pt-6 pl-10">
@@ -127,7 +122,7 @@ function RejectedRow({ application, users }: { application: Application; users: 
         {reject ? (
           <>
             <p className="mt-0.5 font-mono text-[11px] text-muted">
-              {actorName(reject.changedByName, reject.changedById, users)} · {fmtDateTime(reject.changedAt)}
+              {actorName(reject.changedByName)} · {fmtDateTime(reject.changedAt)}
             </p>
             {reject.note ? <p className="mt-1 max-w-xl text-[13px] leading-snug text-ink/80">{reject.note}</p> : null}
           </>
@@ -138,11 +133,17 @@ function RejectedRow({ application, users }: { application: Application; users: 
 }
 
 /**
- * Prefers the name the server resolved from the event's `changedBy` relation.
- * The `users` lookup is kept only for the seeded mock rows, whose ids do exist
- * in the mock list; a real database uuid is in neither, and that used to render
- * every action in the chain of custody as "System".
+ * The name the server resolved from the event's `changedBy` relation.
+ *
+ * There is no client-side fallback lookup left to do. The audit trail used to
+ * consult the mock user list, where a real database uuid matched nothing and so
+ * every action in the chain of custody rendered as "System" — a fabricated
+ * actor on the one screen whose entire purpose is to say who did what.
+ *
+ * `changedBy` is a required relation, so the server always resolves a name; the
+ * fallback exists only so a malformed row degrades to something honest instead
+ * of silently naming someone who was never there.
  */
-function actorName(name: string | undefined, userId: string, users: User[]): string {
-  return name ?? users.find((u) => u.id === userId)?.name ?? "System";
+function actorName(name: string | undefined): string {
+  return name ?? "Unknown user";
 }

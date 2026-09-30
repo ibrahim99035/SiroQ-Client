@@ -32,6 +32,11 @@ const config = [
       "node_modules/**",
       // Uploaded filings are runtime data, not source.
       "data/**",
+      // A CommonJS preload that patches module resolution, so `require()` is
+      // the point. ESLint's no-require-imports rule has nothing useful to say
+      // about it, and there is nothing in it to type-check either.
+      "scripts/empty.cjs",
+      "scripts/register-server-only.cjs",
     ],
   },
 ];

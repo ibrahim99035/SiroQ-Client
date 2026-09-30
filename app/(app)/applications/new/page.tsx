@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -19,10 +20,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useResource } from "@/components/use-resource";
-import { createApplication, fetchPharmaciesForUser } from "@/lib/data";
+import {
+  createApplication,
+  fetchPharmaciesForUser,
+  PartialSubmissionError,
+} from "@/lib/data";
 import { dataScope } from "@/lib/permissions";
 import type { UploadCandidate } from "@/lib/files";
-import { useCurrentUser, useRevision } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import { fmtDate } from "@/lib/utils";
 
 const candidateSchema = z.object({
@@ -57,14 +62,17 @@ type FormValues = z.infer<typeof schema>;
 export default function NewApplicationPage() {
   const user = useCurrentUser();
   const router = useRouter();
-  const revision = useRevision();
   const pharmacies = useResource(
     () => fetchPharmaciesForUser(user!),
-    [user?.id, revision],
+    [user?.id],
   );
 
   const [busy, setBusy] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [partialFiling, setPartialFiling] = React.useState<{
+    id: string;
+    reference: string;
+  } | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -89,6 +97,7 @@ export default function NewApplicationPage() {
     if (!user) return;
     setBusy(true);
     setSubmitError(null);
+    setPartialFiling(null);
     try {
       // The real `File` handles, not the staged metadata. Row counts, byte
       // totals and validation shown on this form come from the server after the
@@ -105,6 +114,15 @@ export default function NewApplicationPage() {
       );
       router.push(`/applications/${application.id}`);
     } catch (reason) {
+      // The filing is real and already has a reference, so name it instead of
+      // telling the user to try again — retrying would open a second filing and
+      // leave this one unexplained in the queue.
+      if (reason instanceof PartialSubmissionError) {
+        setPartialFiling({
+          id: reason.application.id,
+          reference: reason.application.reference,
+        });
+      }
       setSubmitError(
         reason instanceof Error
           ? reason.message
@@ -194,9 +212,25 @@ export default function NewApplicationPage() {
               </div>
 
               {submitError ? (
-                <p role="alert" className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]">
-                  {submitError}
-                </p>
+                <div
+                  role="alert"
+                  className="border border-[var(--status-rejected)]/50 bg-paper-raised px-3 py-2 text-[13px] text-[#7a2e26]"
+                >
+                  <p>{submitError}</p>
+                  {partialFiling ? (
+                    <p className="mt-2">
+                      Open{" "}
+                      <Link
+                        href={`/applications/${partialFiling.id}`}
+                        className="font-mono underline underline-offset-2"
+                      >
+                        {partialFiling.reference}
+                      </Link>{" "}
+                      to see which files are attached. Stage a new filing for anything missing rather
+                      than resubmitting this one, so the queue holds one record per submission.
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
 
               <div className="flex items-center gap-3">

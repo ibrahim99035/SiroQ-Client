@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchReportRaw } from "@/lib/data";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import { fmtDateTime } from "@/lib/utils";
 import {
   REPORT_STATUS_LABELS,

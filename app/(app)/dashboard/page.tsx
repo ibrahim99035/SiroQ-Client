@@ -8,7 +8,6 @@ import {
   StatStripSkeleton,
   SystemError,
   TableSkeleton,
-  useRevision,
 } from "@/components/data-states";
 import { PageHeading } from "@/components/page-heading";
 import { StatModule, StatStrip } from "@/components/stat-module";
@@ -21,25 +20,24 @@ import {
   fetchPharmaciesForUser,
 } from "@/lib/data";
 import { can, dataScope } from "@/lib/permissions";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import { ROLE_LABELS } from "@/lib/types";
 import { fmtMinutes } from "@/lib/utils";
 
 export default function DashboardPage() {
   const user = useCurrentUser();
-  const revision = useRevision();
 
   const stats = useResource(
     () => fetchDashboardForUser(user!),
-    [user?.id, revision, "stats"],
+    [user?.id, "stats"],
   );
   const rows = useResource(
     () => fetchApplicationsForUser(user!),
-    [user?.id, revision],
+    [user?.id],
   );
   const pharmacies = useResource(
     () => fetchPharmaciesForUser(user!),
-    [user?.id, revision, "pharmacies"],
+    [user?.id, "pharmacies"],
   );
 
   if (!user) return null;

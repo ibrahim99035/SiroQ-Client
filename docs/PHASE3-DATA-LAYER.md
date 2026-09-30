@@ -173,13 +173,16 @@ New routes following the `app/api/uploads/route.ts` pattern exactly:
 
 - [x] 2.1 `/api/applications` (GET, POST), `/api/applications/[id]` (GET, PATCH),
       `/api/applications/[id]/status` (PATCH)
-- [x] 2.2 Sequence migration. **Must start at 2617** — seeded references are
-      contiguous `AP-2026-2601`…`AP-2026-2616` and `reference` is `@unique`, so a
-      default starting at 1 both collides conceptually and makes numbering jump
-      backwards in the demo:
+- [x] 2.2 Sequence migration. **Must start above the highest seeded reference** —
+      references are contiguous from `AP-2026-2601` and `reference` is `@unique`,
+      so a default starting at 1 both collides conceptually and makes numbering
+      jump backwards in the demo. It was written when the fixture set ended at
+      2616 and started at 2617; the set later grew to 2619, so the same rule now
+      reads "start at 2620". `prisma/seed.ts` derives this from the seed rather
+      than hardcoding it, which is why the migration did not have to be edited:
 
       ```sql
-      CREATE SEQUENCE application_reference_seq START 2617;
+      CREATE SEQUENCE application_reference_seq START 2617;  -- first cut; see above
       ALTER TABLE applications ALTER COLUMN reference
         SET DEFAULT 'AP-2026-' || lpad(nextval('application_reference_seq')::text, 4, '0');
       ```
@@ -241,10 +244,44 @@ New routes following the `app/api/uploads/route.ts` pattern exactly:
 
 ## Phase 4 — Delete the simulation
 
-- [ ] 4.1 `lib/data.ts` internals → `fetch()`, signatures unchanged
-- [ ] 4.2 Delete `LATENCY`, `delay()`, `faultGuard()` (`lib/data.ts:45-59`)
-- [ ] 4.3 `grep -r '@/lib/data'` returns zero
-- [ ] 4.4 `lib/store.ts` → UI-only state
+- [x] 4.1 `lib/data.ts` internals → `fetch()`, signatures unchanged
+- [x] 4.2 Delete `LATENCY`, `delay()`, `faultGuard()` (`lib/data.ts:45-59`)
+- [x] 4.3 `grep -r '@/lib/data'` returns zero
+- [x] 4.4 `lib/store.ts` → **deleted**, and `lib/data.ts` → the only data module
+
+### What 4.4 actually removed, and what it left behind
+
+The plan said to narrow the store to UI-only state. That turned out to leave
+nothing worth keeping, so the file is gone:
+
+- `useCurrentUser` was the last real export. It read `/api/auth/me` and belongs
+  next to the provider that fetches it, so it moved to
+  `components/session-provider.tsx` and 16 import lines were repointed.
+- `useRevision` was a cache-buster incremented by `markMutated()`. Its only
+  caller was `createAccount`, a mock mutation — so the counter was permanently
+  `0` while six pages listed `revision` in their `useResource` dependency
+  arrays, implying a re-fetch on mutation that could never happen. Deleted along
+  with the six entries; `reload()` is what views actually call.
+- `simulateFault` drove a toggle for a simulated backend that no longer exists.
+- `lib/data.ts` also carried a **second copy of the authorization rules**
+  (`enforceApplicationScope`) plus `getApplication`, both reading the mock
+  arrays, and both now unreachable. Deleting them is a security improvement as
+  much as a cleanup: client-side scope checks are a copy that silently rots away
+  from `lib/permissions.ts`, and scope is decided server-side in every route.
+
+**`lib/seed.ts` is not part of this.** It is the Prisma fixture source, imported
+by `prisma/seed.ts`, and it must stay. Only its use as a runtime client data
+source went away.
+
+### One live bug the store was hiding
+
+`fetchDashboardForUser`'s `scopeLabelFor()` looked the tenant name up in the mock
+store, comparing fixture ids (`assoc-002`) against real UUIDs — a comparison that
+can never match. Every pharmacy worker therefore saw "Unassigned pharmacy" on
+their dashboard regardless of which pharmacy they belonged to, while the stats
+beside it were real. It now reads the name off the application rows already
+fetched for the stats, so it needs no second request; a tenant with no filings
+has no row to read from and falls back to the generic role label.
 
 ## Seed coverage gap found while testing in the browser
 
@@ -257,7 +294,29 @@ report panel is reachable without creating anything), one `in_review`, one
 `pending` — with file specs named for that pharmacy rather than reusing another
 pharmacy's files inside its filing.
 
-Fixture set is now 19 filings / 5 pharmacies / 2 associations.
+Fixture set is now 19 filings / 5 pharmacies / 2 associations / 9 reports.
+
+## Intake ordering — bytes before the filing
+
+Worth its own section because it is a correctness fix, not a migration step.
+`createApplication` used to create the filing first and upload afterwards, so a
+storage failure left a `pending` filing holding no files — visible in the queue,
+explainable to nobody, with an id the browser had thrown away. The only remedy
+offered to the user was "try again", which produced a *second* filing.
+
+The flow is now: reserve every slot unattached → put the bytes in storage →
+create the filing → complete each slot against the new id. The filing is the last
+irreversible step. `PartialSubmissionError` covers the one case that can still
+fail afterwards, and the intake page names the reference instead of inviting a
+retry. Covered by `verify:applications`, including a guard that the byte failure
+test really reaches the transfer — a 401 from an unauthenticated reserve made
+that assertion pass for free at first.
+
+This moved the leak rather than removing it, so `npm run storage:reap`
+(`scripts/reap-expired-uploads.ts`) shipped with it. It was not optional: nothing
+deleted abandoned slots or their objects before, so the reorder would have traded
+a visible empty filing for an invisible pile of leaked storage. It refuses to
+touch a bound slot, since that object is evidence a filing points at.
 
 ## Verification gate (after every phase)
 

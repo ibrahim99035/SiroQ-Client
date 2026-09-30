@@ -116,3 +116,19 @@ export function useSession(): SessionValue {
 export function useSessionOptional(): SessionValue | null {
   return React.useContext(SessionContext);
 }
+
+/**
+ * The signed-in user, from the real session.
+ *
+ * This used to live in the mock store and return `seedUsers[0]`, which meant
+ * every `PermissionGate` and nav item in the running app was evaluated against a
+ * hardcoded person. It reads this provider instead, which fetches
+ * `/api/auth/me`.
+ *
+ * Returns `null` while the session is still loading, so callers must handle the
+ * loading state rather than reading `null` as "signed out" — `AppShell` does
+ * exactly that.
+ */
+export function useCurrentUser(): User | null {
+  return useSessionOptional()?.user ?? null;
+}

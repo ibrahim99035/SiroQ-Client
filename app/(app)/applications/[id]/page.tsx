@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import * as React from "react";
 import { AttachReportDialog } from "@/components/attach-report-dialog";
-import { EmptyState, NotAuthorized, SystemError, useRevision } from "@/components/data-states";
+import { EmptyState, NotAuthorized, SystemError } from "@/components/data-states";
 import { FileLedger } from "@/components/file-ledger";
 import { PageHeading } from "@/components/page-heading";
 import { VisibleWhen } from "@/components/permission-gate";
@@ -16,18 +16,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useResource } from "@/components/use-resource";
 import { DataError, fetchApplicationForUser, updateApplicationStatus } from "@/lib/data";
 import { PermissionError } from "@/lib/permissions";
-import { useCurrentUser } from "@/lib/store";
+import { useCurrentUser } from "@/components/session-provider";
 import type { ApplicationStatus } from "@/lib/types";
 
 export default function ApplicationDetailPage() {
   const params = useParams<{ id: string }>();
   const user = useCurrentUser();
-  const revision = useRevision();
   const id = String(params.id);
 
   const { data, state, error, reload } = useResource(
     () => fetchApplicationForUser(user!, id),
-    [user?.id, revision, id],
+    [user?.id, id],
   );
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [advancing, setAdvancing] = React.useState(false);
