@@ -95,7 +95,7 @@ export default function LoginPage() {
       </div>
 
       <p className="mt-6 text-[13px] text-muted">
-        New to Requis?{" "}
+        New to SiroQ?{" "}
         <Link href="/signup" className="text-accent hover:underline">
           Create an account
         </Link>{" "}

@@ -10,6 +10,7 @@ import {
 } from "@/lib/application-rows";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { absoluteUrl, sendFilingStatusChanged } from "@/lib/mail";
 import { requirePermission } from "@/lib/permissions";
 import { applicationWhere } from "@/lib/scopes";
 
@@ -20,6 +21,10 @@ const statusSchema = z.object({
 
 const scopeSelect = {
   id: true,
+  // Carried because they appear in the notification to the submitter; a lookup
+  // after the commit would only re-read what the authorised fetch already has.
+  title: true,
+  reference: true,
   associationId: true,
   pharmacyId: true,
   status: true,
@@ -132,6 +137,30 @@ export const PATCH = withErrorHandling(
         },
       });
     });
+
+    // Notification after the transaction commits, and deliberately not awaited
+    // into the response path. The write is the audited fact; mail is a courtesy
+    // derived from it. A transport outage must not turn a successful, committed
+    // transition into an error the caller retries — which would also risk a
+    // duplicate event if the retry raced a partially-succeeded first call.
+    const recipient = await prisma.application
+      .findUnique({ where: { id }, select: { submittedBy: { select: { email: true, name: true } } } })
+      .then((row) => row?.submittedBy)
+      .catch(() => null);
+
+    if (recipient && (to === "reported" || to === "rejected")) {
+      void sendFilingStatusChanged({
+        to: recipient.email,
+        submitterName: recipient.name,
+        reference: target.reference,
+        title: target.title,
+        from: target.status,
+        to_: to,
+        changedByName: actor.name,
+        note,
+        filingUrl: absoluteUrl(`/applications/${id}`, request),
+      }).catch(() => undefined);
+    }
 
     const row = await prisma.application.findUniqueOrThrow({
       where: { id },

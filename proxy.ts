@@ -22,17 +22,41 @@ import type { NextRequest } from "next/server";
  */
 
 /**
- * Routes reachable without a session. The marketing site is public; the auth
- * screens obviously are.
+ * Routes reachable without a session.
  *
- * `/dashboard` is intentionally absent: it renders its own signed-out state
- * rather than bouncing, so the user sees context instead of a redirect loop.
+ * The marketing site is public; the auth screens obviously are. `/dashboard`
+ * is intentionally absent: it renders its own signed-out state rather than
+ * bouncing, so the user sees context instead of a redirect loop.
  */
 const PUBLIC_PATHS = [
+  // --- Marketing & company ---
   "/",
+  "/features",
+  "/solutions",
+  "/how-it-works",
   "/pricing",
-  "/terms",
+  "/about",
+  "/customers",
+  "/contact",
+  "/faq",
+  "/blog",
+  // --- Product documentation ---
+  "/docs",
+  // --- Trust, compliance & legal ---
+  "/security",
+  "/compliance",
+  "/status",
+  "/cookies",
+  "/dpa",
   "/privacy",
+  "/terms",
+  "/subprocessors",
+  "/responsible-disclosure",
+  // --- System states that must render without a session ---
+  "/maintenance",
+  "/access-denied",
+  "/session-expired",
+  // --- Authentication screens ---
   "/login",
   "/signup",
   "/forgot-password",

@@ -16,7 +16,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <span className="grid h-6 w-6 place-items-center rounded-stamp bg-accent" aria-hidden="true">
             <span className="h-2 w-2 rounded-[2px] border-2 border-white" />
           </span>
-          <span className="text-[15px] font-semibold tracking-tight">Requis</span>
+          <span className="text-[15px] font-semibold tracking-tight">SiroQ</span>
         </Link>
         <div className="relative z-10 my-auto">
           <p className="max-w-xs font-mono text-xs leading-relaxed text-paper-raised/70">

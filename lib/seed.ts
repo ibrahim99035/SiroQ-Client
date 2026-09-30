@@ -665,7 +665,7 @@ export const seedApplications = APPS.map((a) => {
       to: "pending",
       changedById: a.submittedBy,
       changedAt: a.submittedAt,
-      note: "Files submitted through the Requis intake form.",
+      note: "Files submitted through the SiroQ intake form.",
     },
   ];
   if (a.status === "in_review" || a.status === "rejected") {

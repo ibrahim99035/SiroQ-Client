@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * Requis — modern SaaS clinical/regulatory workspace.
+ * SiroQ — modern SaaS clinical/regulatory workspace.
  * Paper, ink, and a single green accent with a warm moment per screen.
  *
  * Badge fills are darkened derivations of the status hues so white text on
@@ -48,6 +48,15 @@
   --status-rejected-fill: #9c3c30;
 
   --overlay: rgba(22, 48, 46, 0.45);
+
+  /*
+   * Brand ink, sampled from the logo in brand/. `--ink` is the text colour and
+   * stays where it is: it is tuned for contrast on `--paper`. These two are for
+   * the dark surfaces, where the logo ink is the ground rather than the text.
+   */
+  --brand-ink: #023e2f;
+  --brand-deep: #052a21;
+  --brand-line: rgba(255, 255, 255, 0.14);
 }
 
 @layer base {
@@ -163,7 +172,7 @@
     background: var(--hairline);
   }
 
-  /* Requisition label/value grid item. */
+  /* SiroQition label/value grid item. */
   .req-field-label {
     @apply block font-mono text-[10px] uppercase tracking-[0.08em];
     color: var(--muted-text);
@@ -213,6 +222,50 @@
     box-shadow: inset 3px 0 0 0 var(--accent);
   }
 }
+
+  /*
+   * Long-form legal and documentation copy. Six of these pages (privacy, terms,
+   * cookies, DPA, subprocessors, the format spec) are almost entirely prose, and
+   * restating spacing and colour on every paragraph buries the content in
+   * class names. The heading rhythm is set here instead.
+   */
+  .prose-doc {
+    @apply text-sm leading-relaxed text-muted;
+  }
+  .prose-doc h2 {
+    @apply mt-10 text-lg font-semibold tracking-tight text-ink;
+    scroll-margin-top: 5rem;
+  }
+  .prose-doc h3 {
+    @apply mt-6 text-sm font-semibold text-ink;
+    scroll-margin-top: 5rem;
+  }
+  .prose-doc p {
+    @apply mt-3;
+  }
+  .prose-doc ul {
+    @apply mt-3 list-disc space-y-1.5 pl-5;
+  }
+  .prose-doc ol {
+    @apply mt-3 list-decimal space-y-1.5 pl-5;
+  }
+  .prose-doc a {
+    @apply text-accent underline underline-offset-2 hover:text-accent-strong;
+  }
+  .prose-doc strong {
+    @apply font-medium text-ink;
+  }
+  .prose-doc code {
+    @apply rounded-[4px] bg-accent-soft px-1 py-0.5 font-mono text-[12px] text-ink;
+  }
+
+  /* Shared marketing rhythm. */
+  .section {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
+  }
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.16em] text-muted;
+  }
 
 @layer utilities {
   .tabular-nums {

@@ -15,7 +15,7 @@ import type {
 
 /**
  * -------------------------------------------------------------------------
- * Requis data layer — the only place the browser talks to the API.
+ * SiroQ data layer — the only place the browser talks to the API.
  *
  * Single source of truth for both SCOPING and MUTATION. Components never
  * filter arrays inline; every read goes through a `fetch*ForUser(user)` and

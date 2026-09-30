@@ -15,6 +15,7 @@
     "verify:applications": "tsx --require ./scripts/register-server-only.cjs scripts/verify-applications.ts",
     "verify:reports": "tsx scripts/verify-reports.ts",
     "storage:reap": "tsx --require ./scripts/register-server-only.cjs scripts/reap-expired-uploads.ts",
+    "brand:assets": "node scripts/build-brand-assets.mjs",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "db:migrate": "prisma migrate dev",

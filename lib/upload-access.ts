@@ -86,12 +86,12 @@ export function canReadUpload(
  * real consequence: `attachReport` is the action that flips a filing to
  * `reported`, so borrowing it to authorise a *pharmacy-side file write* meant a
  * pharmacy worker could self-attach a report to her own filing and mark it
- * reported — the terminal, delivered state — with Requis's own review output
+ * reported — the terminal, delivered state — with SiroQ's own review output
  * never having happened. `attachReport` is now super-admin only.
  *
  * The right modelled here is `createApplication`: adding evidence to a filing
  * inside your own tenant is the same class of write as filing one, and both are
- * pharmacy-side. Producing the review report is Requis-side.
+ * pharmacy-side. Producing the review report is SiroQ-side.
  */
 export function canAttachToApplication(
   user: PermissionUser,

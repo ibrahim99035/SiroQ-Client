@@ -37,11 +37,11 @@ import { Button } from "@/components/ui/button";
 
 function Brand() {
   return (
-    <Link href="/dashboard" className="flex items-center gap-2 focus-visible:outline-2 focus-visible:outline-accent" aria-label="Requis dashboard">
+    <Link href="/dashboard" className="flex items-center gap-2 focus-visible:outline-2 focus-visible:outline-accent" aria-label="SiroQ dashboard">
       <span className="grid h-6 w-6 place-items-center rounded-stamp bg-accent" aria-hidden="true">
         <span className="h-2 w-2 rounded-[2px] border-2 border-white" />
       </span>
-      <span className="text-[15px] font-semibold tracking-tight text-ink">Requis</span>
+      <span className="text-[15px] font-semibold tracking-tight text-ink">SiroQ</span>
     </Link>
   );
 }
@@ -253,7 +253,7 @@ function SignedOut() {
           <span className="grid h-6 w-6 place-items-center rounded-stamp bg-accent" aria-hidden="true">
             <span className="h-2 w-2 rounded-[2px] border-2 border-white" />
           </span>
-          <span className="text-[15px] font-semibold text-ink">Requis</span>
+          <span className="text-[15px] font-semibold text-ink">SiroQ</span>
         </div>
         <h1 className="text-lg font-semibold text-ink">Your session has ended</h1>
         <p className="mt-2 text-sm text-muted">
@@ -264,7 +264,7 @@ function SignedOut() {
             <Link href="/login">Sign in</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/">Requis home</Link>
+            <Link href="/">SiroQ home</Link>
           </Button>
         </div>
       </div>
@@ -281,7 +281,7 @@ function SessionPending({ error }: { error: ApiError | null }) {
           <span className="grid h-6 w-6 place-items-center rounded-stamp bg-accent" aria-hidden="true">
             <span className="h-2 w-2 rounded-[2px] border-2 border-white" />
           </span>
-          <span className="text-[15px] font-semibold text-ink">Requis</span>
+          <span className="text-[15px] font-semibold text-ink">SiroQ</span>
         </div>
         {error ? (
           <>

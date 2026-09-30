@@ -3,8 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Requis — Pharmacy application review workspace",
-    template: "%s · Requis",
+    default: "SiroQ — Pharmacy application review workspace",
+    template: "%s · SiroQ",
   },
   description:
     "Multi-tenant review workspace for pharmacy application filings. Chain-of-custody, review, and reporting for dispensing records.",

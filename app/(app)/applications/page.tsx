@@ -41,17 +41,17 @@ export default function ApplicationsPage() {
         ) : state === "ready" ? (
           data!.length === 0 ? (
             <EmptyState
-              title="There are no filings in this scope yet."
+              title="No filings yet."
               action={
                 <VisibleWhen action="createApplication">
                   <Button asChild size="sm">
-                    <Link href="/applications/new">Stage a filing</Link>
+                    <Link href="/applications/new">Upload your first file</Link>
                   </Button>
                 </VisibleWhen>
               }
             >
-              A filing appears here the moment a worker stages dispensing files through the intake
-              form. Check back after your next data pull, or start one now.
+              Nothing has been staged in this scope yet. A filing is created the first time a file is
+              staged through the intake form — upload a CSV or workbook and it will appear here.
             </EmptyState>
           ) : (
             <ApplicationTable rows={data!} />

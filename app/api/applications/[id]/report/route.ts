@@ -7,6 +7,7 @@ import { apiError, withErrorHandling } from "@/lib/api";
 import { applicationDetailRowSelect, serializeApplicationRow } from "@/lib/application-rows";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { absoluteUrl, sendFilingStatusChanged } from "@/lib/mail";
 import { requirePermission } from "@/lib/permissions";
 import { applicationWhere } from "@/lib/scopes";
 
@@ -41,6 +42,9 @@ const reportSchema = z.object({
 
 const scopeSelect = {
   id: true,
+  // Carried because they appear in the notification to the submitter.
+  title: true,
+  reference: true,
   associationId: true,
   pharmacyId: true,
   status: true,
@@ -183,6 +187,30 @@ export const POST = withErrorHandling(
       where: { id },
       select: applicationDetailRowSelect,
     });
+
+    // The report *is* the deliverable, so this is the moment the submitter is
+    // most likely to be waiting for mail. Sent after the commit and not awaited
+    // into the response: a transport outage must not make an attached, recorded
+    // report look like a failed request, and a retry of a committed attach is
+    // refused with 409 anyway.
+    const recipient = await prisma.application
+      .findUnique({ where: { id }, select: { submittedBy: { select: { email: true, name: true } } } })
+      .then((found) => found?.submittedBy)
+      .catch(() => null);
+
+    if (recipient) {
+      void sendFilingStatusChanged({
+        to: recipient.email,
+        submitterName: recipient.name,
+        reference: target.reference,
+        title: target.title,
+        from: target.status,
+        to_: "reported",
+        changedByName: actor.name,
+        note,
+        filingUrl: absoluteUrl(`/applications/${id}`, request),
+      }).catch(() => undefined);
+    }
 
     return NextResponse.json({ ok: true, ...serializeApplicationRow(row) });
   },
