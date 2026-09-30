@@ -114,7 +114,8 @@ export function AttachReportDialog({
           <DialogDescription>
             Uploads the review document for this filing and advances it to{" "}
             <span className="font-mono text-[11px] text-ink">reported</span>. The document is
-            stored as attached and can be read back verbatim; nested results render in the panel.
+            stored as attached and read back as the same document, re-indented for
+            reading; nested results render in the panel.
           </DialogDescription>
         </DialogHeader>
 
