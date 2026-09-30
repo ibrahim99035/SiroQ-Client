@@ -41,7 +41,7 @@ tests do not.
   included. `lib/seed.ts` remains as the *Prisma fixture source*
   (`prisma/seed.ts` imports it); it is not client mock state.
 - **Verification**: `npm run verify:authz` (22), `verify:self-service` (17),
-  `verify:invite` (17), `verify:applications` (51), `verify:reports` (38)
+  `verify:invite` (17), `verify:applications` (56), `verify:reports` (38)
 
 **Not started:**
 
