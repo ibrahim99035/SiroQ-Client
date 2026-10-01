@@ -151,7 +151,9 @@ export const PATCH = withErrorHandling(
     if (recipient && (to === "reported" || to === "rejected")) {
       void sendFilingStatusChanged({
         to: recipient.email,
-        submitterName: recipient.name,
+        // The submitter is the recipient on this route, so their name is also
+        // the name the message greets them by.
+        recipientName: recipient.name,
         reference: target.reference,
         title: target.title,
         from: target.status,

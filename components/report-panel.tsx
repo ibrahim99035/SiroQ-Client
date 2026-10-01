@@ -13,6 +13,24 @@ import {
 } from "@/lib/types";
 
 /**
+ * Report document schema this panel knows how to render.
+ *
+ * The analysis service stamps `Schema version` into the projection it emits.
+ * A later revision may add keys or change their meaning, and this panel renders
+ * whatever arrives without complaint — so without an explicit check, a v2
+ * document on a v1 panel would quietly display its fields as if they were the
+ * ones described here. Surfacing the version turns a silent misreading into a
+ * visible mismatch.
+ */
+const KNOWN_SCHEMA_VERSION = "siroq.client.v1";
+
+/** The document's declared schema version, if it declares one. */
+function readSchemaVersion(data: ReportResultData): string | null {
+  const declared = data["Schema version"];
+  return typeof declared === "string" && declared.trim() !== "" ? declared.trim() : null;
+}
+
+/**
  * Report panel. Renders `report.resultData` as a recursive key/value tree —
  * nothing is hardcoded, because an attached report is an arbitrary document
  * and its shape is not known until it is uploaded.
@@ -25,7 +43,10 @@ import {
  */
 export function ReportPanel({ report }: { report: Report }) {
   const [rawOpen, setRawOpen] = React.useState(false);
-  const entries = Object.entries(report.resultData ?? {});
+  const resultData = report.resultData ?? {};
+  const entries = Object.entries(resultData);
+  const schemaVersion = readSchemaVersion(resultData);
+  const schemaMismatch = schemaVersion !== null && schemaVersion !== KNOWN_SCHEMA_VERSION;
 
   return (
     <section className="card overflow-hidden" aria-label="Report">
@@ -60,6 +81,23 @@ export function ReportPanel({ report }: { report: Report }) {
             by {report.generatedByName ?? "Unknown user"}
             {report.engineVersion ? ` · engine ${report.engineVersion}` : ""}
           </p>
+          {/* Absent for a hand-attached report, which declares no schema — only
+              a document that states a version is worth checking against it. */}
+          {schemaVersion ? (
+            <p
+              className={`font-mono text-[11px] ${
+                schemaMismatch ? "text-[var(--warning-text)]" : "text-muted"
+              }`}
+              title={
+                schemaMismatch
+                  ? `This report declares schema ${schemaVersion}. This panel renders ${KNOWN_SCHEMA_VERSION}, so some fields may be shown as something other than what they mean.`
+                  : `Report schema ${schemaVersion}`
+              }
+            >
+              schema {schemaVersion}
+              {schemaMismatch ? ` · expected ${KNOWN_SCHEMA_VERSION}` : ""}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -100,7 +138,12 @@ function ReportRow({
 
     return (
       <div className={depth > 0 ? "border-l border-hairline pl-4" : undefined}>
-        <p className="px-5 py-2 text-[13px] font-medium text-ink">{label}</p>
+        <p
+          className="truncate px-5 py-2 text-[13px] font-medium text-ink"
+          title={label}
+        >
+          {label}
+        </p>
         <dl className="divide-y divide-hairline/60">
           {children.length === 0 ? (
             <div className="px-5 py-1.5">
@@ -126,8 +169,16 @@ function ReportRow({
       className="flex items-baseline justify-between gap-4 px-5 py-2.5"
       style={depth > 0 ? { paddingLeft: `${20 + depth * 16}px` } : undefined}
     >
-      <dt className="text-[13px] text-muted">{label}</dt>
-      <dd className="text-right font-mono text-[13px] tabular-nums text-ink">
+      {/* `min-w-0` is load-bearing: a flex item's automatic minimum size is its
+          content, so without it a long label at depth 5 — a service report
+          keys its per-file branches by filename, and those can be Arabic —
+          pushes the value off the panel rather than ellipsising. `title` keeps
+          the full name reachable. The value caps at 60% so a long finding
+          string wraps instead of squeezing every label to nothing. */}
+      <dt className="min-w-0 flex-1 truncate text-[13px] text-muted" title={label}>
+        {label}
+      </dt>
+      <dd className="max-w-[60%] shrink-0 text-right font-mono text-[13px] tabular-nums text-ink">
         {formatReportValue(value)}
       </dd>
     </div>

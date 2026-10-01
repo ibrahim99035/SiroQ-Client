@@ -475,14 +475,28 @@ const STATUS_FILL = {
 export type FilingStatus = keyof typeof STATUS_LABEL;
 
 /**
- * Reviewer moved a filing.
+ * A reviewer moved a filing.
  *
  * Only the two terminal outcomes are sent, matching `sendFilingStatusChanged`
  * in `lib/mail.ts`: mail-per-transition trains people to ignore status mail.
+ *
+ * Recipients differ and the message is written for both: the submitter, who
+ * filed the thing, and the association admins copied in because they manage
+ * every pharmacy in that association. Nothing in it addresses "your filing"
+ * for that reason.
  */
 export function filingStatusChangedEmail(
   params: {
-    submitterName: string;
+    /**
+     * Whoever the greeting addresses — not necessarily the submitter.
+     *
+     * This is the recipient's own name on every delivery. The submitter
+     * receives it because they are the recipient; an association admin
+     * notified about someone else's filing is greeted by their own name.
+     * The parameter used to be called `submitterName`, which made the fan-out
+     * read as though it should greet admins with the submitter's name.
+     */
+    recipientName: string;
     reference: string;
     title: string;
     from: FilingStatus;
@@ -498,7 +512,7 @@ export function filingStatusChangedEmail(
     : `Report ready for filing ${params.reference}`;
 
   const text = [
-    `Hi ${params.submitterName},`,
+    `Hi ${params.recipientName},`,
     "",
     rejected
       ? `A reviewer rejected the filing "${params.title}" (${params.reference}).`
@@ -537,8 +551,11 @@ export function filingStatusChangedEmail(
         preheader: rejected
           ? `Filing ${params.reference} was rejected.`
           : `The report for ${params.reference} is ready to download.`,
-        heading: rejected ? "Filing rejected" : "Your report is ready",
-        intro: `Hi ${escapeHtml(params.submitterName)},`,
+        // Not "Your report is ready": this message also goes to the filing's
+        // association admins, and a report on someone else's pharmacy's filing
+        // is not theirs. "Report ready" is true for every recipient.
+        heading: rejected ? "Filing rejected" : "Report ready",
+        intro: `Hi ${escapeHtml(params.recipientName)},`,
         body: `<tr>${cell(
           paragraph(
             rejected

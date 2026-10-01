@@ -144,6 +144,101 @@ const NESTED_DOCUMENT = {
   reviewedAt: null,
 };
 
+/**
+ * A document shaped like the analysis service's `format=client` projection.
+ *
+ * This is the shape the panel will actually have to render once the service is
+ * wired up, and it is deliberately awkward in three ways the seeded reports are
+ * not: a `Schema version` key the panel checks itself against, per-file
+ * branches *keyed by filename* (so a label is an Arabic filename at depth 1),
+ * and a top-level array of prose strings. `ReportResultData` has to describe
+ * all of it, or the panel throws on the first real filing.
+ *
+ * The values are transcribed from a real projection of the sample workbooks.
+ */
+const SERVICE_DOCUMENT = {
+  "Schema version": "siroq.client.v1",
+  Application: "AP-2026-2601 · Twin Harbors",
+  "Analysis ID": "40b611c9-743e-4e1f-b799-b645032e9fa0",
+  "Application ID": "18cecd9d-3cac-4d91-98b5-4e2f5a414fca",
+  "Analyzed at": "2026-09-26T15:19:32.145300+00:00",
+  "Engine version": "0.1.0",
+  "Files analyzed": "6",
+  "Records examined": "142,282",
+  "Data quality score": "82.8%",
+  "Quality verdict": "Review",
+  "Findings requiring review": "11",
+  "Files failing a quality check": "inventory-salem.xls, PURCHASE -ABDELHAMID.xls",
+  "Duplicate rows": "892",
+  "Categories detected": ["sales — 4 file(s)", "inventory — 2 file(s)"],
+  "Highest signal": "Warn",
+  Files: {
+    "inventory-salem.xls": {
+      Quality: {
+        Score: "88.6%",
+        Verdict: "Review",
+        "Checks passed": "9 of 15",
+        "Failed checks": "negative_values",
+        Warnings: "nulls_in_totals",
+        "Duplicate rows": "0",
+        Findings: "2",
+      },
+      Domain: {
+        "Gross margin": "9.93%",
+        Revenue: "323,417.86",
+        "Margin basis": "row totals",
+        "Not analyzed": "no unit_cost column",
+      },
+    },
+    "حركة بيع صنف - سالم.xls": {
+      Quality: { Score: "80.1%", Verdict: "Review", Findings: "3" },
+      Domain: { "Gross margin": "2.84%", Revenue: "1,204,318.00" },
+    },
+  },
+  "Evidence gaps": [
+    "inventory-salem.xls — 94 of 2,579 source rows are structural and excluded from the money metrics above",
+    "product - category- salem 22.xls — every row lacks a product identity column",
+  ],
+};
+
+/**
+ * Every leaf of the document, and how deep the walk goes.
+ *
+ * `ReportNode` is `ReportValue | ReportNode[] | { [key]: ReportNode }` and
+ * `ReportValue` is a primitive, so a single non-primitive leaf anywhere is a
+ * value the panel's `formatReportValue` would stringify into `[object Object]`
+ * — or throw on. Asserting the leaf set is the part of "will it render" that can
+ * be checked without a DOM.
+ */
+type LeafAudit = { bad: string[]; deepest: number; count: number };
+
+function leafAudit(node: unknown, path = "", depth = 0): LeafAudit {
+  const acc: LeafAudit = { bad: [], deepest: depth, count: 0 };
+
+  if (Array.isArray(node)) {
+    for (const [index, item] of node.entries()) {
+      acc.bad.push(...leafAudit(item, `${path}[${index}]`, depth + 1).bad);
+      acc.deepest = Math.max(acc.deepest, depth + 1);
+    }
+    return acc;
+  }
+
+  if (node !== null && typeof node === "object") {
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      const child = leafAudit(value, path ? `${path}.${key}` : key, depth + 1);
+      acc.bad.push(...child.bad);
+      acc.deepest = Math.max(acc.deepest, child.deepest);
+      acc.count += child.count;
+    }
+    return acc;
+  }
+
+  const ok = node === null || ["string", "number", "boolean"].includes(typeof node);
+  if (!ok) acc.bad.push(`${path || "<root>"} is ${typeof node}`);
+  acc.count += 1;
+  return acc;
+}
+
 async function main() {
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: env("DATABASE_URL") }),
@@ -435,6 +530,121 @@ async function main() {
       "list rows carry no raw document",
       listedRow?.report?.rawData === undefined,
       typeof listedRow?.report?.rawData,
+    );
+
+    // ---- a service-shaped document ----------------------------------------
+    // A second probe, because `Report.applicationId` is unique and the first
+    // probe already holds one. This is the document the analysis service will
+    // produce, so it is the one the panel has to survive.
+    console.log("\n  service-shaped document");
+
+    const serviceProbe = await prisma.application.create({
+      data: {
+        title: "Service projection probe",
+        pharmacyId: worker.pharmacyId,
+        associationId,
+        submittedById: worker.id,
+        status: "in_review",
+      },
+      select: { id: true, reference: true },
+    });
+
+    try {
+      const audit = leafAudit(SERVICE_DOCUMENT);
+      check(
+        "every leaf in the projection is a primitive the panel can format",
+        audit.bad.length === 0,
+        audit.bad,
+      );
+      check(
+        "the projection nests deeply enough to exercise the indent",
+        audit.deepest >= 3,
+        audit.deepest,
+      );
+
+      const serviceAttach = await request(
+        superCookie,
+        "POST",
+        `/api/applications/${serviceProbe.id}/report`,
+        { document: JSON.stringify(SERVICE_DOCUMENT), note: "Service projection." },
+      );
+      check(
+        "a service-shaped document attaches (200)",
+        serviceAttach.status === 200,
+        `${serviceAttach.status} ${JSON.stringify(serviceAttach.body).slice(0, 200)}`,
+      );
+
+      const serviceRow = (serviceAttach.body as ApiRow).report;
+      check(
+        "the projection round-trips through jsonb intact",
+        deepEqual(serviceRow?.resultData, SERVICE_DOCUMENT),
+        serviceRow?.resultData,
+      );
+
+      // The panel reads this exact key to warn about drift.
+      check(
+        "the panel can read the declared schema version off the stored tree",
+        (serviceRow?.resultData as Record<string, unknown> | undefined)?.["Schema version"] ===
+          "siroq.client.v1",
+        (serviceRow?.resultData as Record<string, unknown> | undefined)?.["Schema version"],
+      );
+
+      const arabicKeyPresent = Object.keys(
+        (serviceRow?.resultData as { Files?: Record<string, unknown> } | undefined)?.Files ?? {},
+      ).some((key) => /[؀-ۿ]/.test(key));
+      check(
+        "per-file branches keyed by a non-latin filename survive the store",
+        arabicKeyPresent,
+        Object.keys((serviceRow?.resultData as { Files?: object } | undefined)?.Files ?? {}),
+      );
+    } finally {
+      await prisma.application.delete({ where: { id: serviceProbe.id } });
+    }
+
+    // ---- who gets told about a report --------------------------------------
+    // The recipient rule, asserted against the same columns the route filters
+    // on. This is not an assertion that mail was sent — there is no sink for it
+    // — but it does pin the two things that could leak across tenants: the
+    // association filter, and the exclusion of a submitter who is themselves an
+    // admin (they would otherwise get the same report twice per attach).
+    console.log("\n  report notification recipients");
+
+    const notified = await prisma.user.findMany({
+      where: {
+        associationId,
+        role: "pharmacy_association_admin",
+        status: "active",
+      },
+      select: { id: true, email: true },
+    });
+    check(
+      "the filing's association has at least one active admin to notify",
+      notified.length > 0,
+      notified.map((u) => u.email),
+    );
+
+    const foreignAdmin = await prisma.user.findFirst({
+      where: {
+        role: "pharmacy_association_admin",
+        status: "active",
+        NOT: { associationId },
+      },
+      select: { id: true, associationId: true },
+    });
+    check(
+      "an active admin exists in a different association",
+      foreignAdmin !== null,
+      foreignAdmin,
+    );
+    check(
+      "that admin is outside the recipient set — tenant isolation holds",
+      foreignAdmin !== null && !notified.some((u) => u.id === foreignAdmin.id),
+      { notified: notified.map((u) => u.email), foreign: foreignAdmin?.associationId },
+    );
+    check(
+      "the submitter is not in the admin recipient set, so no double send",
+      !notified.some((u) => u.id === worker.id),
+      { worker: worker.id, notified: notified.map((u) => u.email) },
     );
   } finally {
     // Reports cascade from the filing, and status events cascade too.

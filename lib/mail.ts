@@ -218,19 +218,20 @@ export async function sendContactMessage(params: {
 export type FilingStatus = TemplateFilingStatus;
 
 /**
- * Notifies the person who staged a filing that a reviewer moved it.
+ * Notifies a recipient that a reviewer moved a filing.
  *
  * Only the two terminal outcomes notify. `pending` and `in_review` are progress
  * the submitter can already see on the filing itself, and mail-per-transition
  * trains people to ignore status mail — which is exactly how a rejection or a
  * delivered report gets missed.
  *
- * `to` is the submitting user rather than the actor: the person who pressed the
- * button already knows.
+ * The recipient is the person who staged the filing, not the actor: the person
+ * who pressed the button already knows.
  */
 export function sendFilingStatusChanged(params: {
   to: string;
-  submitterName: string;
+  /** Name of whoever is being written to — the greeting, not the filing's author. */
+  recipientName: string;
   reference: string;
   title: string;
   from: FilingStatus;
@@ -239,11 +240,11 @@ export function sendFilingStatusChanged(params: {
   note: string;
   filingUrl: string;
 }): Promise<MailResult> {
-  const { to, submitterName, reference, title, from, to_, changedByName, note, filingUrl } = params;
+  const { to, recipientName, reference, title, from, to_, changedByName, note, filingUrl } = params;
   return send(
     to,
     filingStatusChangedEmail({
-      submitterName,
+      recipientName,
       reference,
       title,
       from,
@@ -253,5 +254,57 @@ export function sendFilingStatusChanged(params: {
       filingUrl,
       ...brandLinks(),
     }),
+  );
+}
+
+/**
+ * The filing-notification arguments that do not vary per recipient.
+ *
+ * Split out because the fan-out below is the only caller that needs to know
+ * which fields are shared, and a `Omit<>` of the single-recipient signature
+ * would silently accept a missing `to` as if it were intentional.
+ */
+export type FilingStatusChangedContent = {
+  reference: string;
+  title: string;
+  from: FilingStatus;
+  to_: FilingStatus;
+  changedByName: string;
+  note: string;
+  filingUrl: string;
+};
+
+/**
+ * Fans a filing notification out to several people.
+ *
+ * Exists because an association admin manages every pharmacy in their
+ * association, so a report on any one of those pharmacies is their business
+ * even though they did not file it. They were previously told nothing.
+ *
+ * Every recipient is greeted by their own name — see `recipientName` on
+ * {@link sendFilingStatusChanged}.
+ *
+ * One delivery failing does not cancel the others: `Promise.all` over
+ * individually-guarded sends, because an association with several admins
+ * should still reach the ones whose mailboxes are healthy.
+ */
+export function sendFilingStatusChangedToAll(
+  recipients: ReadonlyArray<{ email: string; name: string }>,
+  content: FilingStatusChangedContent,
+): Promise<MailResult[]> {
+  return Promise.all(
+    recipients.map((recipient) =>
+      sendFilingStatusChanged({
+        ...content,
+        to: recipient.email,
+        recipientName: recipient.name,
+      }).catch((error: unknown): MailResult => {
+        console.error(
+          `[mail] failed to notify ${recipient.email} about ${content.reference}:`,
+          error,
+        );
+        return { delivered: false, reason: "smtp_error" };
+      }),
+    ),
   );
 }

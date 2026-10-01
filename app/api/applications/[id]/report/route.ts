@@ -7,7 +7,7 @@ import { apiError, withErrorHandling } from "@/lib/api";
 import { applicationDetailRowSelect, serializeApplicationRow } from "@/lib/application-rows";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { absoluteUrl, sendFilingStatusChanged } from "@/lib/mail";
+import { absoluteUrl, sendFilingStatusChanged, sendFilingStatusChangedToAll } from "@/lib/mail";
 import { requirePermission } from "@/lib/permissions";
 import { applicationWhere } from "@/lib/scopes";
 
@@ -48,6 +48,11 @@ const scopeSelect = {
   associationId: true,
   pharmacyId: true,
   status: true,
+  // Excludes the submitter from the association fan-out below. An association
+  // admin may file on their own association's behalf, and they would otherwise
+  // receive the same report twice from the same attach.
+  submittedById: true,
+  // Presence only — enough to tell "a report is attached" from "no report".
   report: { select: { id: true } },
 } as const;
 
@@ -193,23 +198,56 @@ export const POST = withErrorHandling(
     // into the response: a transport outage must not make an attached, recorded
     // report look like a failed request, and a retry of a committed attach is
     // refused with 409 anyway.
-    const recipient = await prisma.application
+    const content = {
+      reference: target.reference,
+      title: target.title,
+      from: target.status,
+      to_: "reported" as const,
+      changedByName: actor.name,
+      note,
+      filingUrl: absoluteUrl(`/applications/${id}`, request),
+    };
+
+    const submitter = await prisma.application
       .findUnique({ where: { id }, select: { submittedBy: { select: { email: true, name: true } } } })
       .then((found) => found?.submittedBy)
       .catch(() => null);
 
-    if (recipient) {
+    if (submitter) {
       void sendFilingStatusChanged({
-        to: recipient.email,
-        submitterName: recipient.name,
-        reference: target.reference,
-        title: target.title,
-        from: target.status,
-        to_: "reported",
-        changedByName: actor.name,
-        note,
-        filingUrl: absoluteUrl(`/applications/${id}`, request),
+        ...content,
+        to: submitter.email,
+        recipientName: submitter.name,
       }).catch(() => undefined);
+    }
+
+    // The association admins are copied in as well. `attachReport` is
+    // super-admin-only, so they cannot produce the report, but they own every
+    // pharmacy in the association — a filed and reported application on any of
+    // them is a decision they are accountable for, and until now they were
+    // never told.
+    //
+    // Scoped by the filing's own `associationId` and nothing else, which is
+    // what `applicationWhere` already grants these users. An admin in another
+    // association can neither see the filing nor be selected here, so this
+    // cannot leak a tenant's title or reference across the estate.
+    const associationAdmins = await prisma.user
+      .findMany({
+        where: {
+          associationId: target.associationId,
+          role: "pharmacy_association_admin",
+          // Disabled and still-invited accounts must not be mailed: a disabled
+          // user has been removed for a reason, and an `invited` address has
+          // never been proven to belong to its owner.
+          status: "active",
+        },
+        select: { id: true, email: true, name: true },
+      })
+      .then((admins) => admins.filter((admin) => admin.id !== target.submittedById))
+      .catch(() => []);
+
+    if (associationAdmins.length > 0) {
+      void sendFilingStatusChangedToAll(associationAdmins, content).catch(() => undefined);
     }
 
     return NextResponse.json({ ok: true, ...serializeApplicationRow(row) });
