@@ -170,11 +170,14 @@ function ReportRow({
       style={depth > 0 ? { paddingLeft: `${20 + depth * 16}px` } : undefined}
     >
       {/* `min-w-0` is load-bearing: a flex item's automatic minimum size is its
-          content, so without it a long label at depth 5 — a service report
-          keys its per-file branches by filename, and those can be Arabic —
-          pushes the value off the panel rather than ellipsising. `title` keeps
-          the full name reachable. The value caps at 60% so a long finding
-          string wraps instead of squeezing every label to nothing. */}
+          content, so without it a long label pushes the value off the panel
+          rather than ellipsising. A service projection keys its per-file
+          branches by filename, and those really are Arabic in the sample
+          corpus (`اصناف لم تباع.xls`), so this is the common case rather than
+          a hypothetical one — leaves reach depth 5 once a file has an Insights
+          or Column profile branch. `title` keeps the full name reachable. The
+          value caps at 60% so a long finding string wraps instead of squeezing
+          every label away. */}
       <dt className="min-w-0 flex-1 truncate text-[13px] text-muted" title={label}>
         {label}
       </dt>

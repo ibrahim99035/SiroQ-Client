@@ -148,13 +148,17 @@ const NESTED_DOCUMENT = {
  * A document shaped like the analysis service's `format=client` projection.
  *
  * This is the shape the panel will actually have to render once the service is
- * wired up, and it is deliberately awkward in three ways the seeded reports are
- * not: a `Schema version` key the panel checks itself against, per-file
- * branches *keyed by filename* (so a label is an Arabic filename at depth 1),
- * and a top-level array of prose strings. `ReportResultData` has to describe
- * all of it, or the panel throws on the first real filing.
+ * wired up, and it exercises the three cases the seeded reports do not: a
+ * `Schema version` key the panel checks itself against; per-file branches
+ * *keyed by filename*, which in the sample corpus are Arabic and reach depth 4;
+ * and arrays of prose both at the top level and nested inside a file branch.
+ * `ReportResultData` has to describe all of it, or the panel degrades on the
+ * first real filing.
  *
- * The values are transcribed from a real projection of the sample workbooks.
+ * Key names and value shapes mirror `_file_projection` in the service
+ * (`app/analytics_service/reporting.py`); its own
+ * `tests/test_client_projection.py` is the authority on the contract, so this
+ * fixture only has to stay faithful, not be exhaustive.
  */
 const SERVICE_DOCUMENT = {
   "Schema version": "siroq.client.v1",
@@ -163,7 +167,7 @@ const SERVICE_DOCUMENT = {
   "Application ID": "18cecd9d-3cac-4d91-98b5-4e2f5a414fca",
   "Analyzed at": "2026-09-26T15:19:32.145300+00:00",
   "Engine version": "0.1.0",
-  "Files analyzed": "6",
+  "Files analyzed": "10",
   "Records examined": "142,282",
   "Data quality score": "82.8%",
   "Quality verdict": "Review",
@@ -174,6 +178,12 @@ const SERVICE_DOCUMENT = {
   "Highest signal": "Warn",
   Files: {
     "inventory-salem.xls": {
+      Type: "Excel workbook (.xls)",
+      Rows: "2,485",
+      Columns: "14",
+      Size: "301,056 bytes",
+      "Detected category": "inventory",
+      "Category confidence": ["inventory — 96%", "sales — 4%"],
       Quality: {
         Score: "88.6%",
         Verdict: "Review",
@@ -182,15 +192,39 @@ const SERVICE_DOCUMENT = {
         Warnings: "nulls_in_totals",
         "Duplicate rows": "0",
         Findings: "2",
+        "Finding detail": [
+          "negative_values=fail count=3 by_column=Amount",
+          "nulls_in_totals=warn count=11 by_column=Total",
+        ],
       },
       Domain: {
         "Gross margin": "9.93%",
         Revenue: "323,417.86",
         "Margin basis": "row totals",
+        "Stock value": ["product 812 — 41,220.00", "product 415 — 18,904.50"],
         "Not analyzed": "no unit_cost column",
       },
+      Insights: {
+        Revenue: { "Total revenue": "323,417.86", "Average sale": "130.19" },
+        "Skipped — Gross profit": "needs a unit_cost column",
+      },
+      "Column profile": {
+        Amount: {
+          Type: "number",
+          Nulls: "1.2%",
+          Unique: "94.3%",
+          Statistics: "min -120.00; mean 130.19; max 8,410.00; sum 323,417.86",
+          "Most frequent": "0 × 31, 250 × 18",
+        },
+      },
+      "Structural notes": ["94 structural rows excluded from the money metrics above"],
     },
     "حركة بيع صنف - سالم.xls": {
+      Type: "Excel workbook (.xls)",
+      Rows: "18,904",
+      Columns: "9",
+      "Detected category": "sales",
+      "Category confidence": ["sales — 100%"],
       Quality: { Score: "80.1%", Verdict: "Review", Findings: "3" },
       Domain: { "Gross margin": "2.84%", Revenue: "1,204,318.00" },
     },
@@ -557,8 +591,14 @@ async function main() {
         audit.bad,
       );
       check(
-        "the projection nests deeply enough to exercise the indent",
-        audit.deepest >= 3,
+        // Measured on the real sample corpus: 10 files -> 145 leaves, 6.1 KB,
+        // deepest leaf at depth 4 when the file has no Insights or Column
+        // profile branch populated. Those branches are conditional in
+        // `_file_projection`, and when either is present the real document
+        // reaches depth 5 (`Files` > filename > `Insights` > group > item), so
+        // the fixture deliberately goes one deeper to cover it.
+        "the fixture nests as deeply as a real projection can",
+        audit.deepest >= 4,
         audit.deepest,
       );
 
