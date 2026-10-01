@@ -106,12 +106,25 @@ function check(name: string, ok: boolean, detail = ""): void {
   }
 }
 
-type Reply = { status: number; body: unknown };
+type Reply = { status: number; body: unknown; headers: Headers };
 
 /** Reads the uploadId out of an API reply without trusting the shape. */
 function uploadIdFrom(body: unknown): string {
   const parsed = body as { uploadId?: unknown };
   return typeof parsed.uploadId === "string" ? parsed.uploadId : "";
+}
+
+/**
+ * Reads the bound `ApplicationFile` id out of a `/complete` reply.
+ *
+ * A different uuid from the upload slot: binding a file to a filing mints a fresh
+ * `application_files` row. Anything addressing a file through its filing needs
+ * this one, not the upload id.
+ */
+function fileIdFrom(body: unknown): string {
+  const parsed = body as { file?: { id?: unknown } } | null;
+  const id = parsed?.file?.id;
+  return typeof id === "string" ? id : "";
 }
 
 /** Reads the reserved storage key out of an API reply. */
@@ -140,7 +153,7 @@ async function call(
   } catch {
     /* binary or html body */
   }
-  return { status: res.status, body };
+  return { status: res.status, body, headers: res.headers };
 }
 
 /** Signs in and returns the session cookie header value. */
@@ -173,14 +186,14 @@ async function uploadFile(
   cookie: string,
   fileName: string,
   applicationId?: string,
-): Promise<{ uploadId: string; created: number; completed?: Reply }> {
+): Promise<{ uploadId: string; fileId: string; created: number; completed?: Reply }> {
   const created = await call("/api/uploads", {
     method: "POST",
     cookie,
     body: { fileName, declaredBytes: Buffer.byteLength(CSV), applicationId },
   });
   if (created.status !== 200) {
-    return { uploadId: "", created: created.status, completed: created };
+    return { uploadId: "", fileId: "", created: created.status, completed: created };
   }
   const uploadId = uploadIdFrom(created.body);
   createdUploads.push(uploadId);
@@ -199,14 +212,15 @@ async function uploadFile(
     const headers =
       (created.body as { headers?: Record<string, string> }).headers ?? {};
     if (typeof url !== "string" || !url) {
-      return { uploadId, created: created.status, completed: { status: 0, body: null } };
+      return { uploadId, fileId: "", created: created.status, completed: { status: 0, body: null, headers: new Headers() } };
     }
     const put = await fetch(url, { method: "PUT", headers, body: CSV });
     if (!put.ok) {
       return {
         uploadId,
+        fileId: "",
         created: created.status,
-        completed: { status: put.status, body: { error: `presigned PUT failed` } },
+        completed: { status: put.status, body: { error: `presigned PUT failed` }, headers: new Headers() },
       };
     }
   }
@@ -219,7 +233,7 @@ async function uploadFile(
       ...(applicationId ? { applicationId } : {}),
     },
   });
-  return { uploadId, created: created.status, completed };
+  return { uploadId, fileId: fileIdFrom(completed.body), created: created.status, completed };
 }
 
 /** Removes every upload slot this run opened, plus the files they produced. */
@@ -321,6 +335,17 @@ async function main(): Promise<void> {
   const read = (cookie: string) =>
     call(`/api/uploads/${seed.uploadId}/content`, { cookie }).then((r) => r.status);
 
+  // The same bytes addressed through the filing, which is what the ledger's
+  // download button actually hits. `ApplicationFile.id` is a *different* uuid
+  // from the upload slot, so this cannot be the `/api/uploads` path above.
+  if (!seed.fileId) {
+    throw new Error("setup failed: /complete returned no bound ApplicationFile id");
+  }
+  const download = (cookie: string, applicationId = appA.id, fileId = seed.fileId) =>
+    call(`/api/applications/${applicationId}/files/${fileId}/content`, { cookie });
+  const downloadStatus = (cookie: string, applicationId?: string, fileId?: string) =>
+    download(cookie, applicationId, fileId).then((r) => r.status);
+
   console.log("  Read scoping");
   check("own association admin can read", (await read(cookieAdminA)) === 200);
   check(
@@ -339,6 +364,47 @@ async function main(): Promise<void> {
     "worker at a different pharmacy is denied",
     (await read(cookieWorkerOther)) === 403,
     "cross-tenant read",
+  );
+
+  // --- 1b. Filing-scoped file download ------------------------------------
+  console.log("\n  File download scoping (via the filing)");
+  check("own association admin can download", (await downloadStatus(cookieAdminA)) === 200);
+  check("worker at the filing's pharmacy can download", (await downloadStatus(cookieWorkerSame)) === 200);
+  check("moderator can download", (await downloadStatus(cookieModerator)) === 200);
+  check("super admin can download", (await downloadStatus(cookieSuper)) === 200);
+  check(
+    "OTHER association admin is denied",
+    (await downloadStatus(cookieAdminB)) === 404,
+    "cross-tenant download must not even confirm the filing exists",
+  );
+  check(
+    "worker at a different pharmacy is denied",
+    (await downloadStatus(cookieWorkerOther)) === 404,
+    "cross-tenant download",
+  );
+
+  // A file reached through the *wrong* filing is the confused-deputy case: the
+  // caller may see appB, but the bytes belong to appA, so the parent check must
+  // be re-applied against the pairing rather than the file alone.
+  check(
+    "file cannot be read through another filing they can see",
+    (await downloadStatus(cookieAdminB, appB.id, seed.fileId)) === 404,
+    "appB's admin must not fetch appA's file by pairing a visible filing with a foreign file id",
+  );
+
+  const attachment = await download(cookieAdminA);
+  const disposition = attachment.headers.get("content-disposition") ?? "";
+  check(
+    "download is an attachment carrying the stored filename",
+    attachment.status === 200 &&
+      disposition.includes("attachment") &&
+      disposition.includes(CSV_NAME),
+    `got ${attachment.status} ${disposition}`,
+  );
+  check(
+    "download bytes match what was uploaded",
+    typeof attachment.body === "string" && attachment.body === CSV,
+    "the streamed body should be the CSV verbatim",
   );
 
   // --- 2. Create scoping ---------------------------------------------------
@@ -502,6 +568,22 @@ async function main(): Promise<void> {
     cookie: cookieAdminA,
   });
   check("unknown upload id 404s", missing.status === 404, `got ${missing.status}`);
+
+  const missingFile = await call(
+    `/api/applications/${appA.id}/files/00000000-0000-4000-8000-000000000000/content`,
+    { cookie: cookieAdminA },
+  );
+  check("unknown file id 404s", missingFile.status === 404, `got ${missingFile.status}`);
+
+  const notUuid = await call(`/api/applications/${appA.id}/files/not-a-uuid/content`, {
+    cookie: cookieAdminA,
+  });
+  check("malformed file id 404s rather than 500", notUuid.status === 404, `got ${notUuid.status}`);
+
+  const anonDownload = await call(
+    `/api/applications/${appA.id}/files/${seed.fileId}/content`,
+  );
+  check("anonymous download is refused", anonDownload.status === 401, `got ${anonDownload.status}`);
 
   // --- summary -------------------------------------------------------------
   console.log(`\n${passed} passed, ${failures.length} failed`);

@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatBytes, fmtDate } from "@/lib/utils";
 import type { ApplicationFile, FileValidationState } from "@/lib/types";
 
@@ -14,6 +15,16 @@ const STATE_META: Record<
 /**
  * File ledger: every staged file with per-file validation, shown as a ruled
  * table. The reason string is always a real sentence, never a bare icon.
+ *
+ * The download column needs no permission branch of its own. Authorization for
+ * a filing's bytes is exactly authorization to see the filing, and `verify:authz`
+ * already pins that down per role — so a caller who reached this page can
+ * download, and one who did not never gets here. The route answers 404 rather
+ * than 403 for out-of-scope ids, so there is nothing here to leak by omission.
+ *
+ * A plain anchor, not `fetch` + blob: the route sends `Content-Disposition:
+ * attachment`, so the browser downloads natively, streams a 50 MB workbook
+ * straight to disk, and works with JavaScript disabled.
  */
 export function FileLedger({ files }: { files: ApplicationFile[] }) {
   return (
@@ -23,7 +34,7 @@ export function FileLedger({ files }: { files: ApplicationFile[] }) {
           No files are staged in this ledger. Attach a file to begin a filing.
         </p>
       ) : (
-        <table className="ruled-table min-w-[720px]">
+        <table className="ruled-table min-w-[840px]">
           <thead>
             <tr>
               <th>Filename</th>
@@ -32,6 +43,9 @@ export function FileLedger({ files }: { files: ApplicationFile[] }) {
               <th>Cols</th>
               <th className="min-w-[220px]">Detected columns</th>
               <th className="min-w-[240px]">Validation</th>
+              <th className="w-[124px] text-right">
+                <span className="sr-only">Download</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -66,6 +80,15 @@ export function FileLedger({ files }: { files: ApplicationFile[] }) {
                       <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${meta.className}`} aria-label={`${meta.label} — ${file.validationReason}`} />
                       <span className="text-[12px] leading-snug text-ink">{file.validationReason}</span>
                     </p>
+                  </td>
+                  <td className="text-right align-middle">
+                    <Button asChild variant="outline" size="sm">
+                      <a href={file.downloadUrl}>
+                        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                        Download
+                        <span className="sr-only"> {file.filename}</span>
+                      </a>
+                    </Button>
                   </td>
                 </tr>
               );

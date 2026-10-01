@@ -294,10 +294,14 @@ const FILE_SPECS: FileSpec[] = [
 ];
 
 /** Build an ApplicationFile row from a FileSpec. */
-function buildFiles(specs: FileSpec[]): import("./types").ApplicationFile[] {
+function buildFiles(specs: FileSpec[], applicationId: string): import("./types").ApplicationFile[] {
   return specs.map((s, i) => ({
     id: `${s.name}-${i}`,
     filename: s.name,
+    // Same shape the real serializer emits. These rows are demo fixtures whose
+    // ids are not uuids, so the link is presentational only — the API route
+    // answers 404 for it exactly as it would for any other unknown id.
+    downloadUrl: `/api/applications/${applicationId}/files/${s.name}-${i}/content`,
     sizeBytes: s.size,
     kind: s.kind,
     rowCount: s.rows,
@@ -659,7 +663,10 @@ export const seedReports: Report[] = APPS.filter((a) => a.status === "reported")
 /* ------------------------------------------------------------------ */
 
 export const seedApplications = APPS.map((a) => {
-  const files = buildFiles(a.fileRefs.map((i) => FILE_SPECS[i]!));
+  const files = buildFiles(
+    a.fileRefs.map((i) => FILE_SPECS[i]!),
+    a.id,
+  );
   const history: StatusEvent[] = [
     {
       to: "pending",

@@ -232,6 +232,9 @@ export function serializeApplicationRow(row: ApplicationRowPayload) {
       files: row.files.map((file) => ({
         id: file.id,
         filename: file.originalName,
+        // Built here, not in the browser: the download path and the route that
+        // authorizes it are then guaranteed to be the same one.
+        downloadUrl: `/api/applications/${row.id}/files/${file.id}/content`,
         sizeBytes: Number(file.sizeBytes),
         kind: file.kind,
         rowCount: file.rowCount,

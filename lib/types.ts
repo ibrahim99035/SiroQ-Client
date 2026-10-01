@@ -44,6 +44,14 @@ export interface User {
 export interface ApplicationFile {
   id: string;
   filename: string;
+  /**
+   * Authorised download path for this file's bytes, built by the serializer.
+   *
+   * Server-computed rather than assembled in the browser so the client never
+   * hand-constructs an API path, and so the URL and the route that authorizes
+   * it cannot drift apart.
+   */
+  downloadUrl: string;
   sizeBytes: number;
   kind: FileKind;
   rowCount: number;
