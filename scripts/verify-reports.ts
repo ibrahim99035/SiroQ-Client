@@ -160,6 +160,19 @@ const NESTED_DOCUMENT = {
  * `tests/test_client_projection.py` is the authority on the contract, so this
  * fixture only has to stay faithful, not be exhaustive.
  */
+/**
+ * A service projection, with the shapes `_file_projection` actually emits.
+ *
+ * This used to be a flat pre-charts projection. It now carries the tagged nodes
+ * (`$chart`, `$forecast`, `$notes`) verbatim, including the `$`-prefixed keys,
+ * the object-valued `Bars`/`History`/`Projected` arrays and the nested
+ * `Accuracy`/`Notes` — because a fixture that only *resembles* the service
+ * output would pass the round-trip check while proving nothing about whether the
+ * rich nodes survive the store.
+ *
+ * The forecast's 18 history + 6 projected points, 90% interval bounds and
+ * R²/RMSE accuracy keys are the real output shape, not placeholders.
+ */
 const SERVICE_DOCUMENT = {
   "Schema version": "siroq.client.v1",
   Application: "AP-2026-2601 · Twin Harbors",
@@ -183,7 +196,13 @@ const SERVICE_DOCUMENT = {
       Columns: "14",
       Size: "301,056 bytes",
       "Detected category": "inventory",
-      "Category confidence": ["inventory — 96%", "sales — 4%"],
+      "Category confidence": {
+        $chart: "bar",
+        Bars: [
+          { Label: "inventory", Value: "96.0%", Share: "100.0%" },
+          { Label: "sales", Value: "4.0%", Share: "4.2%" },
+        ],
+      },
       Quality: {
         Score: "88.6%",
         Verdict: "Review",
@@ -201,12 +220,27 @@ const SERVICE_DOCUMENT = {
         "Gross margin": "9.93%",
         Revenue: "323,417.86",
         "Margin basis": "row totals",
-        "Stock value": ["product 812 — 41,220.00", "product 415 — 18,904.50"],
+        "Stock value": {
+          $chart: "bar",
+          Total: "77,002.00",
+          Bars: [
+            { Label: "product 812", Value: "41,220.00", Share: "100.0%" },
+            { Label: "product 415", Value: "18,904.50", Share: "45.9%" },
+          ],
+        },
         "Not analyzed": "no unit_cost column",
       },
       Insights: {
         Revenue: { "Total revenue": "323,417.86", "Average sale": "130.19" },
-        "Skipped — Gross profit": "needs a unit_cost column",
+        "Not computed": {
+          $notes: [
+            {
+              Severity: "warn",
+              Subject: "Skipped — Gross profit",
+              Detail: "Needs a revenue column and a cost column together",
+            },
+          ],
+        },
       },
       "Column profile": {
         Amount: {
@@ -217,22 +251,113 @@ const SERVICE_DOCUMENT = {
           "Most frequent": "0 × 31, 250 × 18",
         },
       },
-      "Structural notes": ["94 structural rows excluded from the money metrics above"],
+      Forecast: {
+        $forecast: true,
+        Series: "Revenue",
+        Granularity: "week",
+        Method: "linear",
+        "Method note": "Least-squares linear trend extrapolated forward.",
+        Confidence: "90% interval",
+        Horizon: "6 weeks ahead",
+        History: [
+          { Period: "2026-05-04", Value: "994.00" },
+          { Period: "2026-05-11", Value: "1,493.00" },
+          { Period: "2026-05-18", Value: "1,540.00" },
+          { Period: "2026-05-25", Value: "1,587.00" },
+        ],
+        Projected: [
+          {
+            Period: "2026-06-08",
+            Value: "1,463.49",
+            Low: "1,122.60",
+            High: "1,804.39",
+          },
+          {
+            Period: "2026-06-15",
+            Value: "1,493.15",
+            Low: "1,040.10",
+            High: "1,946.20",
+          },
+          {
+            Period: "2026-06-22",
+            Value: "1,522.81",
+            Low: "969.80",
+            High: "2,075.82",
+          },
+          {
+            Period: "2026-06-29",
+            Value: "1,552.47",
+            Low: "894.20",
+            High: "2,210.74",
+          },
+          {
+            Period: "2026-07-06",
+            Value: "1,582.13",
+            Low: "826.10",
+            High: "2,338.16",
+          },
+          {
+            Period: "2026-07-13",
+            Value: "1,647.52",
+            Low: "812.50",
+            High: "2,482.55",
+          },
+        ],
+        Accuracy: { "Error (RMSE)": "207.25", "Typical error": "0.2%", "Fit (R²)": "0.56" },
+        Notes: ["Treat the interval, not the midpoint, as the answer."],
+      },
+      Caveats: {
+        $notes: [
+          {
+            Severity: "critical",
+            Subject: "Read error",
+            Detail: "Failed to read file: no Excel engine could read this workbook",
+          },
+          {
+            Severity: "info",
+            Subject: "Structural rows",
+            Detail:
+              "94 of 2,579 rows had no product identity and no money value, " +
+              "so they are excluded from every money metric in this file",
+          },
+          {
+            Severity: "info",
+            Subject: "How this table was read",
+            Detail:
+              "report-table discovery: header row at row 4, 14 columns, 2,485 data rows",
+          },
+        ],
+      },
     },
     "حركة بيع صنف - سالم.xls": {
       Type: "Excel workbook (.xls)",
       Rows: "18,904",
       Columns: "9",
       "Detected category": "sales",
-      "Category confidence": ["sales — 100%"],
+      "Category confidence": {
+        $chart: "bar",
+        Bars: [{ Label: "sales", Value: "100.0%", Share: "100.0%" }],
+      },
       Quality: { Score: "80.1%", Verdict: "Review", Findings: "3" },
       Domain: { "Gross margin": "2.84%", Revenue: "1,204,318.00" },
     },
   },
-  "Evidence gaps": [
-    "inventory-salem.xls — 94 of 2,579 source rows are structural and excluded from the money metrics above",
-    "product - category- salem 22.xls — every row lacks a product identity column",
-  ],
+  "Evidence gaps": {
+    $notes: [
+      {
+        Severity: "warn",
+        Subject: "inventory-salem.xls",
+        Detail:
+          "94 of 2,579 source rows are structural and excluded from the " +
+          "money metrics above",
+      },
+      {
+        Severity: "critical",
+        Subject: "product - category- salem 22.xls",
+        Detail: "every row lacks a product identity column",
+      },
+    ],
+  },
 };
 
 /**
@@ -243,24 +368,58 @@ const SERVICE_DOCUMENT = {
  * value the panel's `formatReportValue` would stringify into `[object Object]`
  * — or throw on. Asserting the leaf set is the part of "will it render" that can
  * be checked without a DOM.
+ *
+ * Inside a tagged subtree the rule inverts, and deliberately: `$chart`'s
+ * `Bars`, `$forecast`'s `History`/`Projected` and `$notes`'s records are objects
+ * *by design*, because they are what a renderer reads instead of printing. So
+ * the audit records them separately — `objectListItems` — rather than flagging
+ * them, which means an untagged object list still fails.
  */
-type LeafAudit = { bad: string[]; deepest: number; count: number };
+type LeafAudit = {
+  bad: string[];
+  /** Object items in a list outside any tagged node — always a defect. */
+  objectListItems: string[];
+  /** Object items in a list inside a tagged node — expected, and counted. */
+  taggedObjectListItems: string[];
+  deepest: number;
+  count: number;
+};
 
-function leafAudit(node: unknown, path = "", depth = 0): LeafAudit {
-  const acc: LeafAudit = { bad: [], deepest: depth, count: 0 };
+const RICH_TAGS = ["$chart", "$forecast", "$notes"] as const;
+
+function leafAudit(node: unknown, path = "", depth = 0, tagged = false): LeafAudit {
+  const acc: LeafAudit = {
+    bad: [],
+    objectListItems: [],
+    taggedObjectListItems: [],
+    deepest: depth,
+    count: 0,
+  };
 
   if (Array.isArray(node)) {
     for (const [index, item] of node.entries()) {
-      acc.bad.push(...leafAudit(item, `${path}[${index}]`, depth + 1).bad);
+      const itemPath = `${path}[${index}]`;
+      if (item !== null && typeof item === "object") {
+        (tagged ? acc.taggedObjectListItems : acc.objectListItems).push(itemPath);
+      }
+      const child = leafAudit(item, itemPath, depth + 1, tagged);
+      acc.bad.push(...child.bad);
+      acc.objectListItems.push(...child.objectListItems);
+      acc.taggedObjectListItems.push(...child.taggedObjectListItems);
       acc.deepest = Math.max(acc.deepest, depth + 1);
+      acc.count += child.count;
     }
     return acc;
   }
 
   if (node !== null && typeof node === "object") {
-    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      const child = leafAudit(value, path ? `${path}.${key}` : key, depth + 1);
+    const record = node as Record<string, unknown>;
+    const nowTagged = tagged || RICH_TAGS.some((tag) => tag in record);
+    for (const [key, value] of Object.entries(record)) {
+      const child = leafAudit(value, path ? `${path}.${key}` : key, depth + 1, nowTagged);
       acc.bad.push(...child.bad);
+      acc.objectListItems.push(...child.objectListItems);
+      acc.taggedObjectListItems.push(...child.taggedObjectListItems);
       acc.deepest = Math.max(acc.deepest, child.deepest);
       acc.count += child.count;
     }
@@ -271,6 +430,18 @@ function leafAudit(node: unknown, path = "", depth = 0): LeafAudit {
   if (!ok) acc.bad.push(`${path || "<root>"} is ${typeof node}`);
   acc.count += 1;
   return acc;
+}
+
+/** Every tagged node in the document, at any depth. */
+function findTagged(node: unknown, found: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(node)) {
+    for (const item of node) findTagged(item, found);
+  } else if (node !== null && typeof node === "object") {
+    const record = node as Record<string, unknown>;
+    if (RICH_TAGS.some((tag) => tag in record)) found.push(record);
+    for (const value of Object.values(record)) findTagged(value, found);
+  }
+  return found;
 }
 
 async function main() {
@@ -636,6 +807,87 @@ async function main() {
         "per-file branches keyed by a non-latin filename survive the store",
         arabicKeyPresent,
         Object.keys((serviceRow?.resultData as { Files?: object } | undefined)?.Files ?? {}),
+      );
+
+      // ---- the tagged nodes, through the store -------------------------------
+      // The round-trip above proves the JSON is intact; these assert the shapes a
+      // renderer destructures. If the service ever drops a key, or sends bars
+      // without `Share`, the panel would silently draw a wrong chart — which is
+      // why each destructured key is pinned here rather than left to the type.
+      console.log("\n  rich report nodes");
+
+      const storedTags = findTagged(serviceRow?.resultData);
+      const charts = storedTags.filter((node) => typeof node.$chart === "string");
+      const forecasts = storedTags.filter((node) => node.$forecast === true);
+      const notes = storedTags.filter((node) => Array.isArray(node.$notes));
+
+      check("bar charts survive the store", charts.length > 0, charts.length);
+      check(
+        "every chart keeps the keys the panel reads",
+        charts.every((node) => {
+          if (node.$chart === "table") return Array.isArray(node.Columns) && Array.isArray(node.Rows);
+          return Array.isArray(node.Bars) && (node.Bars as unknown[]).every((bar) =>
+            ["Label", "Value", "Share"].every((key) =>
+              typeof (bar as Record<string, unknown>)[key] === "string",
+            ),
+          );
+        }),
+        charts.map((node) => node.$chart),
+      );
+
+      check("the forecast node survives the store", forecasts.length > 0, forecasts.length);
+      check(
+        "the forecast keeps the interval bounds the band is drawn from",
+        forecasts.every((node) => {
+          const projected = node.Projected as Record<string, string>[] | undefined;
+          return (
+            Array.isArray(projected) &&
+            projected.length > 0 &&
+            projected.every((p) => typeof p.Low === "string" && typeof p.High === "string")
+          );
+        }),
+        (forecasts[0]?.Projected as unknown[] | undefined)?.length,
+      );
+      check(
+        "the forecast states its method, confidence and horizon",
+        forecasts.every(
+          (node) =>
+            typeof node.Method === "string" &&
+            typeof node.Confidence === "string" &&
+            typeof node.Horizon === "string",
+        ),
+        forecasts[0]?.Method,
+      );
+
+      check("notes nodes survive the store", notes.length > 0, notes.length);
+      check(
+        "every note carries a severity, subject and detail",
+        notes.every((node) =>
+          (node.$notes as Record<string, unknown>[]).every(
+            (note) =>
+              typeof note.Severity === "string" &&
+              typeof note.Subject === "string" &&
+              typeof note.Detail === "string",
+          ),
+        ),
+        notes.map((node) => (node.$notes as unknown[]).length),
+      );
+
+      // The inverse of the leaf audit: object list items are only legitimate
+      // *inside* a tag. A `$notes` record or a bar that escaped its subtree would
+      // render as `[object Object]`.
+      check(
+        "no object list items outside a tagged node",
+        audit.objectListItems.length === 0,
+        audit.objectListItems,
+      );
+      // Otherwise the assertion above would also pass on a document with no
+      // tagged lists at all — i.e. on the old flat fixture, which is the case
+      // this fixture exists to replace.
+      check(
+        "the fixture does exercise object lists inside tags",
+        audit.taggedObjectListItems.length > 0,
+        audit.taggedObjectListItems.length,
       );
     } finally {
       await prisma.application.delete({ where: { id: serviceProbe.id } });

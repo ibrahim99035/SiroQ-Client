@@ -83,6 +83,91 @@ export type ReportValue = string | number | boolean | null;
 export type ReportNode = ReportValue | ReportNode[] | { [key: string]: ReportNode };
 export type ReportResultData = { [key: string]: ReportNode };
 
+/**
+ * Rich nodes the analysis service tags with a reserved key.
+ *
+ * The result payload is a recursive label→value tree, so anything richer than a
+ * scalar has to be expressed as an object. A `$`-prefixed key marks a subtree as
+ * *drawable* rather than tabular: without it the panel would show a bar chart as
+ * a list of `"label — value"` strings, which is what the service used to send
+ * because nothing here could render anything else.
+ *
+ * The tags are additive: a report with none of them still renders exactly as
+ * before, which is why a hand-attached document is unaffected.
+ */
+export interface ChartNode {
+  $chart: "bar" | "table";
+  /** Present on `bar`: summed magnitude, so the reader has the denominator. */
+  Total?: string;
+  Bars?: { Label: string; Value: string; Share: string }[];
+  /** Present on `table`. */
+  Columns?: string[];
+  Rows?: string[][];
+}
+
+export interface NoteItem {
+  Severity: string;
+  Subject: string;
+  Detail: string;
+}
+
+export interface ForecastPoint {
+  Period: string;
+  Value: string;
+  /** Interval bounds; present on projected points only. */
+  Low?: string;
+  High?: string;
+}
+
+export interface ForecastNode {
+  $forecast: true;
+  Series: string;
+  Granularity: string;
+  Method: string;
+  "Method note": string;
+  Confidence: string;
+  Horizon: string;
+  History: ForecastPoint[];
+  Projected: ForecastPoint[];
+  Accuracy?: Record<string, string>;
+  Notes?: string[];
+}
+
+export interface NotesNode {
+  $notes: NoteItem[];
+}
+
+/**
+ * A tagged subtree, as a value of the tree type.
+ *
+ * The intersection is what the type system needs rather than an index signature
+ * on each interface above: `ReportNode`'s object arm is `{[key: string]:
+ * ReportNode}`, and a plain interface is not assignable to an index-signature
+ * type, so `node is ChartNode` on a `ReportNode` parameter is rejected as a type
+ * predicate. Intersecting keeps the readable interfaces and satisfies the
+ * constraint in one place.
+ */
+type Tagged<T> = { [key: string]: ReportNode } & T;
+
+export function isChartNode(node: ReportNode | undefined): node is Tagged<ChartNode> {
+  return isPlainObject(node) && typeof node.$chart === "string";
+}
+
+export function isForecastNode(node: ReportNode | undefined): node is Tagged<ForecastNode> {
+  return isPlainObject(node) && node.$forecast === true;
+}
+
+export function isNotesNode(node: ReportNode | undefined): node is Tagged<NotesNode> {
+  return isPlainObject(node) && Array.isArray(node.$notes);
+}
+
+/** The tagged keys the panel hands to a renderer instead of walking. */
+export const RICH_NODE_KEYS = ["$chart", "$forecast", "$notes"] as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export type ReportSource = "manual" | "service";
 
 export interface Report {

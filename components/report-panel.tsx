@@ -6,11 +6,15 @@ import { fetchReportRaw } from "@/lib/data";
 import { useCurrentUser } from "@/components/session-provider";
 import { fmtDateTime } from "@/lib/utils";
 import {
+  isChartNode,
+  isForecastNode,
+  isNotesNode,
   REPORT_STATUS_LABELS,
   type Report,
   type ReportNode,
   type ReportResultData,
 } from "@/lib/types";
+import { ReportBarChart, ReportForecastChart, ReportNotes, ReportTableChart } from "@/components/report-chart";
 
 /**
  * Report document schema this panel knows how to render.
@@ -21,6 +25,12 @@ import {
  * document on a v1 panel would quietly display its fields as if they were the
  * ones described here. Surfacing the version turns a silent misreading into a
  * visible mismatch.
+ *
+ * `siroq.client.v1` also covers the tagged nodes (`$chart`, `$forecast`,
+ * `$notes`), which are additive: an untagged document renders as the plain tree
+ * it always was, and an unrecognised `$`-tag falls through to the branch
+ * renderer. That is why adding them did not warrant a bump — see
+ * `docs/CLIENT_REPORT_CONTRACT.md` in the analysis service.
  */
 const KNOWN_SCHEMA_VERSION = "siroq.client.v1";
 
@@ -131,6 +141,87 @@ function ReportRow({
   value: ReportNode;
   depth: number;
 }) {
+  // Rich nodes are drawn, not tabulated. Checked before the branch case because
+  // they *are* objects -- without this they would render as `$chart: "bar"`
+  // followed by a nested list of every bar, which is the flattened form this
+  // replaced.
+  if (isChartNode(value)) {
+    return (
+      <div className="border-t border-hairline/60">
+        <p className="truncate px-5 py-2 text-[13px] font-medium text-ink" title={label}>
+          {label}
+        </p>
+        {value.$chart === "table" ? (
+          <ReportTableChart columns={value.Columns ?? []} rows={value.Rows ?? []} />
+        ) : (
+          <ReportBarChart bars={value.Bars ?? []} total={value.Total} />
+        )}
+      </div>
+    );
+  }
+
+  if (isForecastNode(value)) {
+    return (
+      <div className="border-t border-hairline/60">
+        <p className="truncate px-5 py-2 text-[13px] font-medium text-ink" title={label}>
+          {label}
+        </p>
+        <ReportForecastChart
+          history={value.History ?? []}
+          projected={value.Projected ?? []}
+          series={value.Series}
+          method={value.Method}
+        />
+        {/* The accuracy and interval metadata sits under the chart rather than
+            in the header: the drawing is what a reader looks at, and these are
+            the qualifiers on how far to trust it. */}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 px-5 pb-2 text-[12px]">
+          {value.Horizon ? <dt className="text-muted">Horizon</dt> : null}
+          {value.Horizon ? <dd className="text-ink">{value.Horizon}</dd> : null}
+          {value.Confidence ? <dt className="text-muted">Confidence</dt> : null}
+          {value.Confidence ? <dd className="text-ink">{value.Confidence}</dd> : null}
+          {value["Method note"] ? <dt className="text-muted">Method</dt> : null}
+          {value["Method note"] ? (
+            <dd className="text-ink">
+              {value.Method} — {value["Method note"]}
+            </dd>
+          ) : null}
+          {/* One pass rather than two: a `<dl>` needs the term before its
+              description, and pairing them per entry keeps them adjacent when
+              the order changes. */}
+          {Object.entries(value.Accuracy ?? {}).map(([key, metric]) => (
+            <React.Fragment key={key}>
+              <dt className="text-muted">{key}</dt>
+              <dd className="font-mono tabular-nums text-ink">{String(metric)}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+        {value.Notes?.length ? (
+          <ReportNotes
+            notes={value.Notes.map((note) => ({
+              Severity: "info",
+              Subject: "Forecast",
+              Detail: note,
+            }))}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  if (isNotesNode(value)) {
+    return (
+      <div className="border-t border-hairline/60">
+        <p className="truncate px-5 py-2 text-[13px] font-medium text-ink" title={label}>
+          {label}
+        </p>
+        <div className="px-5 pb-3">
+          <ReportNotes notes={value.$notes} />
+        </div>
+      </div>
+    );
+  }
+
   if (isBranch(value)) {
     const children = Array.isArray(value)
       ? value.map((item, index) => [String(index), item] as const)
