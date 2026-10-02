@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { apiError, withErrorHandling } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { contentDisposition } from "@/lib/content-disposition";
 import { prisma } from "@/lib/db";
 import { getObject } from "@/lib/storage";
 import { canReadUpload, resolveUploadApplication } from "@/lib/upload-access";
@@ -55,7 +56,7 @@ export const GET = withErrorHandling(
       headers: {
         "Content-Type": stored.contentType,
         "Content-Length": String(stored.sizeBytes),
-        "Content-Disposition": `attachment; filename="${upload.originalName.replace(/"/g, "")}"`,
+        "Content-Disposition": contentDisposition(upload.originalName),
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },

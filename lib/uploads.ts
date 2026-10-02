@@ -58,15 +58,34 @@ export function sha256Hex(bytes: Buffer): string {
  * with a bare 500. Collapsing dot runs after the filter keeps the key readable
  * while guaranteeing it survives validation. Slicing can only remove characters,
  * so it cannot reintroduce a run the collapse already removed.
+ *
+ * Non-Latin-1 names are transliterated rather than replaced, because replacing
+ * every run with `-` erased the whole name: `الاكثر.xlsx` became `-.xlsx` and the
+ * stored key was left as `...--.xlsx`, with no trace of what the file was. The
+ * original name is always kept in the database, so this only has to stay
+ * recognisable and safe.
  */
 export function buildStorageKey(fileName: string, userId: string, now = new Date()): string {
   const day = now.toISOString().slice(0, 10);
-  const safeName =
-    fileName
-      .replace(/[^A-Za-z0-9._-]+/g, "-")
-      .replace(/\.{2,}/g, ".")
-      .slice(-96) || "upload";
-  return `filings/${day}/${userId}/${randomUUID()}-${safeName}`;
+  const slug = slugify(fileName);
+  return `filings/${day}/${userId}/${randomUUID()}-${slug}`;
+}
+
+/**
+ * A filesystem- and key-safe, still-readable rendering of a filename.
+ *
+ * ASCII letters, digits, dot and dash survive. Everything else becomes `-`, runs
+ * of it collapse, and leading dashes are trimmed so the extension stays legible.
+ */
+function slugify(fileName: string): string {
+  const slug = fileName
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/\.{2,}/g, ".")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[-.]+/, "")
+    .slice(-96)
+    .replace(/-+$/, "");
+  return slug || "upload";
 }
 
 /** Strips directory components and control characters out of a client-supplied name. */

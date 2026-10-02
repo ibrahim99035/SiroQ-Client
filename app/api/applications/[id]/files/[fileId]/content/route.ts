@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { apiError, withErrorHandling } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { contentDisposition } from "@/lib/content-disposition";
 import { prisma } from "@/lib/db";
 import { getObject } from "@/lib/storage";
 import { applicationWhere } from "@/lib/scopes";
@@ -50,10 +51,23 @@ export const GET = withErrorHandling(
 
     const file = await prisma.applicationFile.findFirst({
       where: { AND: [{ applicationId: filing.id }, { id: fileId }] },
-      select: { originalName: true, mimeType: true, storageKey: true, sizeBytes: true },
+      select: {
+        originalName: true,
+        mimeType: true,
+        storageKey: true,
+        sizeBytes: true,
+        storageDriver: true,
+      },
     });
     if (!file) {
       return apiError("not_found", "That file does not exist.", 404);
+    }
+
+    // Seeded fixtures carry metadata but no stored bytes (`prisma/seed.ts`
+    // documents this contract). Answering here keeps the route honest and
+    // skips a storage round trip that can only ever miss.
+    if (file.storageDriver === "seed") {
+      return apiError("not_found", "That file is recorded but missing from storage.", 404);
     }
 
     const stored = await getObject(file.storageKey);
@@ -67,8 +81,9 @@ export const GET = withErrorHandling(
         "Content-Type": file.mimeType || stored.contentType,
         "Content-Length": String(file.sizeBytes),
         // The filename is server-chosen: the client's `download` attribute, if it
-        // set one, would rename the file the operator actually uploaded.
-        "Content-Disposition": `attachment; filename="${file.originalName.replace(/[\\"\r\n]/g, "")}"`,
+        // set one, would rename the file the operator actually uploaded. RFC 5987
+        // because a real name is usually not Latin-1.
+        "Content-Disposition": contentDisposition(file.originalName),
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },

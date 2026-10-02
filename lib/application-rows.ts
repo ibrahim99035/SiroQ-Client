@@ -54,6 +54,7 @@ const fileSummary = {
   validationState: true,
   validationReason: true,
   uploadedAt: true,
+  storageDriver: true,
 } as const;
 
 /**
@@ -171,6 +172,7 @@ type ApplicationRowPayload = {
     validationState: "valid" | "warning" | "invalid";
     validationReason: string;
     uploadedAt: Date;
+    storageDriver: string;
   }[];
   events: {
     to: "pending" | "in_review" | "reported" | "rejected";
@@ -234,6 +236,11 @@ export function serializeApplicationRow(row: ApplicationRowPayload) {
         filename: file.originalName,
         // Built here, not in the browser: the download path and the route that
         // authorizes it are then guaranteed to be the same one.
+        //
+        // Seeded fixtures hold metadata with no stored bytes, so they have
+        // nothing to serve. Handing the client a URL it cannot use produces a
+        // button that always fails, so the flag travels with the row instead.
+        downloadable: file.storageDriver !== "seed",
         downloadUrl: `/api/applications/${row.id}/files/${file.id}/content`,
         sizeBytes: Number(file.sizeBytes),
         kind: file.kind,

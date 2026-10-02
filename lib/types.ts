@@ -52,6 +52,13 @@ export interface ApplicationFile {
    * it cannot drift apart.
    */
   downloadUrl: string;
+  /**
+   * False for seeded fixtures, which carry metadata but no stored bytes.
+   *
+   * Sending this instead of the storage key keeps the driver's internals on
+   * the server, and lets the ledger omit a button that could only ever 404.
+   */
+  downloadable: boolean;
   sizeBytes: number;
   kind: FileKind;
   rowCount: number;

@@ -407,6 +407,61 @@ async function main(): Promise<void> {
     "the streamed body should be the CSV verbatim",
   );
 
+  // --- 1c. Non-Latin-1 filenames -------------------------------------------
+  // Regression. A header value must be a ByteString (Latin-1), so building
+  // `Content-Disposition` from a raw UTF-8 filename threw
+  //   TypeError: Cannot convert argument to a ByteString because the character
+  //   at index 22 has a value of 1491 which is greater than 255
+  // while the response was being constructed. The route turned that into an
+  // opaque 500, so *every* download of a non-Latin-1 file failed in production
+  // while ASCII filenames worked — which is exactly how it reached a live
+  // filing named `الاكثر والاقل مبيعا.xlsx`. RFC 5987 `filename*` is required.
+  console.log("\n  Non-Latin-1 filenames (ByteString regression)");
+  const FOREIGN_NAMES = [
+    "الاكثر والاقل مبيعا.xlsx",
+    "דוח מגירה יומי.xlsx",
+    "résumé-trimés.csv",
+    "report 📊.csv",
+  ];
+  for (const name of FOREIGN_NAMES) {
+    const uploaded = await uploadFile(cookieAdminA, name, appA.id);
+    if (uploaded.completed?.status !== 200 || !uploaded.fileId) {
+      check(`upload of ${name} succeeds`, false, JSON.stringify(uploaded.completed?.body));
+      continue;
+    }
+    const response = await call(
+      `/api/applications/${appA.id}/files/${uploaded.fileId}/content`,
+      { cookie: cookieAdminA },
+    );
+    const header = response.headers.get("content-disposition") ?? "";
+
+    // The header must at least be storable: this is the assertion that fails
+    // with the 500, because the throw happens on assignment.
+    check(
+      `${name} downloads 200 with a storable header`,
+      response.status === 200 && header.length > 0,
+      `got ${response.status} ${header}`,
+    );
+
+    // RFC 5987 round trip: the real name must survive the wire.
+    const encoded = /filename\*=UTF-8''([^;]+)/.exec(header)?.[1];
+    check(
+      `${name} survives RFC 5987 encoding`,
+      encoded !== undefined && decodeURIComponent(encoded) === name,
+      `filename* was ${encoded}`,
+    );
+
+    // Header values must be Latin-1 or they cannot be sent at all.
+    const latin1Safe = !/[^\x00-\xff]/.test(header);
+    check(`${name} header is Latin-1 safe`, latin1Safe, `header had a non-Latin-1 char`);
+
+    check(
+      `${name} bytes match`,
+      typeof response.body === "string" && response.body === CSV,
+      "body should be the uploaded bytes verbatim",
+    );
+  }
+
   // --- 2. Create scoping ---------------------------------------------------
   console.log("\n  Upload-slot creation scoping");
   const ownSlot = await call("/api/uploads", {

@@ -299,8 +299,10 @@ function buildFiles(specs: FileSpec[], applicationId: string): import("./types")
     id: `${s.name}-${i}`,
     filename: s.name,
     // Same shape the real serializer emits. These rows are demo fixtures whose
-    // ids are not uuids, so the link is presentational only — the API route
-    // answers 404 for it exactly as it would for any other unknown id.
+    // ids are not uuids and which hold no stored bytes, so `downloadable` is
+    // false and the ledger shows "No file stored" rather than a link that
+    // answers 404 — exactly as the route would.
+    downloadable: false,
     downloadUrl: `/api/applications/${applicationId}/files/${s.name}-${i}/content`,
     sizeBytes: s.size,
     kind: s.kind,

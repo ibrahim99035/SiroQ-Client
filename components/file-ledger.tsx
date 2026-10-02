@@ -82,13 +82,22 @@ export function FileLedger({ files }: { files: ApplicationFile[] }) {
                     </p>
                   </td>
                   <td className="text-right align-middle">
-                    <Button asChild variant="outline" size="sm">
-                      <a href={file.downloadUrl}>
-                        <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                        Download
-                        <span className="sr-only"> {file.filename}</span>
-                      </a>
-                    </Button>
+                    {file.downloadable ? (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={file.downloadUrl}>
+                          <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                          Download
+                          <span className="sr-only"> {file.filename}</span>
+                        </a>
+                      </Button>
+                    ) : (
+                      // A seeded fixture holds metadata but no bytes. Saying so beats
+                      // offering a button that answers 404 every time it is pressed.
+                      <span className="text-[12px] text-muted-foreground">
+                        No file stored
+                        <span className="sr-only"> for {file.filename}</span>
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
