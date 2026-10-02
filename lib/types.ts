@@ -7,7 +7,7 @@ export type Role =
 export type UserStatus = "active" | "invited" | "disabled";
 export type EntityStatus = "active" | "suspended";
 export type ApplicationStatus = "pending" | "in_review" | "reported" | "rejected";
-export type FileKind = "xlsx" | "csv";
+export type FileKind = "xlsx" | "xls" | "csv";
 export type FileValidationState = "valid" | "warning" | "invalid";
 export type ReportStatus = "draft" | "final";
 
@@ -245,3 +245,18 @@ export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
   draft: "Draft",
   final: "Final",
 };
+
+export interface ReportRichTextNode {
+  $rich: {
+    content: unknown;
+    title?: string;
+  };
+}
+
+export function isRichTextNode(value: unknown): value is ReportRichTextNode {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (!record.$rich || typeof record.$rich !== "object") return false;
+  const rich = record.$rich as Record<string, unknown>;
+  return "content" in rich;
+}

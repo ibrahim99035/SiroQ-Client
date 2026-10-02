@@ -65,7 +65,7 @@ export function FileLedger({ files }: { files: ApplicationFile[] }) {
                   <td>
                     <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted">
                       <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden="true" />
-                      {file.kind === "xlsx" ? "xlsx" : "csv"}
+                      {file.kind === "csv" ? "csv" : "xls/xlsx"}
                     </span>
                   </td>
                   <td className="font-mono text-[12px]">{file.rowCount.toLocaleString("en-US")}</td>

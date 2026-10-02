@@ -11,14 +11,15 @@ import { createHash, randomUUID } from "node:crypto";
  */
 
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
-const DEFAULT_EXTENSIONS = ".xlsx,.csv";
+const DEFAULT_EXTENSIONS = ".xlsx,.xls,.csv";
 
 export const KIND_BY_EXTENSION: Record<string, FileKind> = {
   ".xlsx": "xlsx",
+  ".xls": "xls",
   ".csv": "csv",
 };
 
-export type FileKind = "xlsx" | "csv";
+export type FileKind = "xlsx" | "xls" | "csv";
 
 export function allowedExtensions(): string[] {
   return (process.env.UPLOAD_ALLOWED_EXTENSIONS || DEFAULT_EXTENSIONS)
@@ -134,6 +135,26 @@ export function inspectBytes(kind: FileKind, bytes: Buffer): IntakeReport {
       reason: isZip
         ? "Workbook accepted. Sheet contents are parsed on demand."
         : "The file has an .xlsx name but is not a valid Excel workbook.",
+      rowCount: 0,
+      columnCount: 0,
+      detectedColumns: [],
+      sheetNames: [],
+    };
+  }
+
+  if (kind === "xls") {
+    // Legacy XLS starts with OLE2/BIFF header: 0xD0 0xCF 0x11 0xE0 (DOCFILE)
+    const isOle2 =
+      bytes.byteLength >= 4 &&
+      bytes[0] === 0xd0 &&
+      bytes[1] === 0xcf &&
+      bytes[2] === 0x11 &&
+      bytes[3] === 0xe0;
+    return {
+      state: isOle2 ? "valid" : "invalid",
+      reason: isOle2
+        ? "Legacy workbook accepted. Sheet contents are parsed on demand."
+        : "The file has an .xls name but is not a valid Excel workbook.",
       rowCount: 0,
       columnCount: 0,
       detectedColumns: [],

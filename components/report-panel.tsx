@@ -9,12 +9,14 @@ import {
   isChartNode,
   isForecastNode,
   isNotesNode,
+  isRichTextNode,
   REPORT_STATUS_LABELS,
   type Report,
   type ReportNode,
   type ReportResultData,
 } from "@/lib/types";
 import { ReportBarChart, ReportForecastChart, ReportNotes, ReportTableChart } from "@/components/report-chart";
+import { ReportRichText } from "@/components/rich-text-renderer";
 
 /**
  * Report document schema this panel knows how to render.
@@ -198,13 +200,21 @@ function ReportRow({
         </dl>
         {value.Notes?.length ? (
           <ReportNotes
-            notes={value.Notes.map((note) => ({
+            notes={(value as any).Notes?.map((note: any) => ({
               Severity: "info",
               Subject: "Forecast",
               Detail: note,
             }))}
           />
         ) : null}
+      </div>
+    );
+  }
+
+  if (isRichTextNode(value)) {
+    return (
+      <div className="border-t border-hairline/60">
+        <ReportRichText content={(value as any).$rich.content} title={(value as any).$rich.title ?? label} />
       </div>
     );
   }
@@ -216,7 +226,7 @@ function ReportRow({
           {label}
         </p>
         <div className="px-5 pb-3">
-          <ReportNotes notes={value.$notes} />
+          <ReportNotes notes={(value as any).$notes} />
         </div>
       </div>
     );
@@ -224,7 +234,7 @@ function ReportRow({
 
   if (isBranch(value)) {
     const children = Array.isArray(value)
-      ? value.map((item, index) => [String(index), item] as const)
+      ? (value as any).map((item: any, index: number): any => [String(index), item] as const)
       : Object.entries(value);
 
     return (
@@ -241,7 +251,7 @@ function ReportRow({
               <dd className="text-[13px] text-muted">Empty</dd>
             </div>
           ) : (
-            children.map(([childLabel, childValue]) => (
+            children.map(([childLabel, childValue]: [string, any]) => (
               <ReportRow
                 key={childLabel}
                 label={childLabel}

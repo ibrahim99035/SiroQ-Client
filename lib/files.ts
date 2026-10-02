@@ -1,6 +1,6 @@
 import type { FileKind, FileValidationState } from "./types";
 
-export const SUPPORTED_EXTENSIONS = [".xlsx", ".csv"] as const;
+export const SUPPORTED_EXTENSIONS = [".xlsx", ".xls", ".csv"] as const;
 
 export interface UploadCandidate {
   fileName: string;
@@ -48,6 +48,7 @@ function extensionOf(name: string): string {
 export function classifyFileKind(fileName: string): FileKind | null {
   const ext = extensionOf(fileName);
   if (ext === ".xlsx") return "xlsx";
+  if (ext === ".xls") return "xls";
   if (ext === ".csv") return "csv";
   return null;
 }
@@ -77,7 +78,7 @@ const COL_COMPOUND = [
 ];
 
 const REASON_BAD_EXT =
-  "Only .xlsx or .csv files are accepted. The file was held back and not staged for review.";
+  "Only .xlsx, .xls or .csv files are accepted. The file was held back and not staged for review.";
 const REASON_BAD_DATE =
   "Dispense date out of range at row {N}; value falls outside the reporting window. Correct the source and re-stage.";
 const REASON_MISSING_COL =

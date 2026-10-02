@@ -163,7 +163,7 @@ type ApplicationRowPayload = {
   files: {
     id: string;
     originalName: string;
-    kind: "xlsx" | "csv";
+    kind: "xlsx" | "xls" | "csv";
     mimeType: string;
     sizeBytes: bigint;
     rowCount: number;

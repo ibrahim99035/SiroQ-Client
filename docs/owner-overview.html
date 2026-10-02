@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SiroQ — Owner Overview &amp; Technical Reference</title>
+<meta name="description" content="SiroQ: pharmacy filing and analytics platform — product, roles, services, and engineering reference." />
+<style>
+  /* ---------- Brand tokens (mirrors app/globals.css) ---------- */
+  :root {
+    --paper:#f4f6f5; --paper-raised:#ffffff; --ink:#16302e; --on-brand:#e9f2f0;
+    --on-brand-muted:#a9bfbb; --accent:#2e6f6a; --accent-strong:#245b57;
+    --accent-muted:#dfeae7; --accent-soft:#eef4f1; --accent-warm:#c97a3d;
+    --accent-warm-strong:#a86030; --hairline:#d8ddda; --muted-text:#5e6e6b;
+    --brand-ink:#023e2f; --brand-deep:#052a21;
+    --ok:#1f7a4d; --ok-bg:#e6f4ec; --warn:#8a5a10; --warn-bg:#fbf1dd;
+    --bad:#a33328; --bad-bg:#fbeae7; --info:#245b57; --info-bg:#e4efec;
+    --shadow:0 1px 2px rgba(22,48,46,.05),0 8px 24px rgba(22,48,46,.06);
+    --radius:12px; --radius-sm:8px;
+    --font:"IBM Plex Sans","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  html[data-theme="dark"] {
+    --paper:#052a21; --paper-raised:#07352a; --ink:#e9f2f0; --on-brand:#e9f2f0;
+    --on-brand-muted:#9db8b2; --accent:#7fb8ad; --accent-strong:#9fcfc5;
+    --accent-muted:#0d4638; --accent-soft:#0a3b2f; --accent-warm:#dda070;
+    --accent-warm-strong:#efc294; --hairline:#124438; --muted-text:#9db8b2;
+    --brand-ink:#052a21; --brand-deep:#03211a;
+    --ok:#6fd3a0; --ok-bg:#0d3a29; --warn:#e8c07d; --warn-bg:#3a2f13;
+    --bad:#f0a79c; --bad-bg:#3d1f1b; --info:#9fcfc5; --info-bg:#0d3a2f;
+    --shadow:0 1px 2px rgba(0,0,0,.2),0 8px 24px rgba(0,0,0,.28);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:var(--font);background:var(--paper);color:var(--ink);
+    line-height:1.6;-webkit-font-smoothing:antialiased;font-size:15px}
+  a{color:var(--accent-strong);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.86em;background:var(--accent-soft);
+    border:1px solid var(--hairline);border-radius:5px;padding:.1em .4em}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+
+  /* ---------- Top bar ---------- */
+  .topbar{position:sticky;top:0;z-index:50;background:var(--brand-ink);color:var(--on-brand);
+    border-bottom:1px solid rgba(255,255,255,.08)}
+  .topbar .wrap{display:flex;align-items:center;gap:16px;height:60px}
+  .topbar .logo img{height:26px;display:block}
+  .topbar .spacer{flex:1}
+  .topbar .doc-title{font-size:13px;color:var(--on-brand-muted);font-weight:500;letter-spacing:.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .iconbtn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:var(--on-brand);
+    border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:var(--font)}
+  .iconbtn:hover{background:rgba(255,255,255,.16)}
+
+  /* ---------- Layout ---------- */
+  .layout{display:grid;grid-template-columns:250px 1fr;gap:32px;align-items:start;padding:28px 0 64px}
+  aside.toc{position:sticky;top:84px;max-height:calc(100vh - 110px);overflow:auto;
+    border-right:1px solid var(--hairline);padding-right:16px}
+  aside.toc h4{margin:14px 8px 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted-text)}
+  aside.toc a{display:block;padding:5px 10px;border-radius:7px;font-size:13.5px;color:var(--ink);opacity:.78}
+  aside.toc a:hover{background:var(--accent-soft);opacity:1;text-decoration:none}
+  aside.toc a.active{background:var(--accent);color:#fff;opacity:1;font-weight:600}
+  aside.toc a.sub{padding-left:22px;font-size:12.5px}
+  main{min-width:0}
+
+  /* ---------- Hero ---------- */
+  .hero{background:linear-gradient(135deg,var(--brand-ink) 0%,var(--brand-deep) 60%,#03211a 100%);
+    color:var(--on-brand);padding:56px 0 52px;position:relative;overflow:hidden}
+  .hero:after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;
+    background:radial-gradient(circle,rgba(127,184,173,.22),transparent 70%);pointer-events:none}
+  .hero img.hero-logo{height:44px;margin-bottom:22px;position:relative;z-index:1}
+  .hero h1{font-size:clamp(26px,4vw,40px);line-height:1.15;margin:0 0 10px;letter-spacing:-.02em;position:relative;z-index:1}
+  .hero p.lede{font-size:16px;color:var(--on-brand-muted);max-width:760px;margin:0 0 20px;position:relative;z-index:1}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;position:relative;z-index:1}
+  .badge{font-size:12px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.1);
+    border:1px solid rgba(255,255,255,.16);color:var(--on-brand)}
+
+  /* ---------- Sections ---------- */
+  section{margin:0 0 46px;scroll-margin-top:80px}
+  .sec-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .sec-head .num{font-family:var(--mono);font-size:12px;color:#fff;background:var(--accent);
+    width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:0 0 auto}
+  h2{font-size:23px;letter-spacing:-.01em;margin:0}
+  .sec-sub{color:var(--muted-text);font-size:14px;margin:0 0 18px;padding-left:38px}
+  h3{font-size:16px;margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--hairline)}
+
+  /* ---------- Cards / grids ---------- */
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .card{background:var(--paper-raised);border:1px solid var(--hairline);border-radius:var(--radius);
+    padding:16px 18px;box-shadow:var(--shadow)}
+  .card h4{margin:0 0 4px;font-size:14.5px;display:flex;align-items:center;gap:8px}
+  .card h4 .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+  .card p{margin:4px 0 0;font-size:13.5px;color:var(--muted-text)}
+  .card ul{margin:8px 0 0;padding-left:18px;font-size:13px;color:var(--muted-text)}
+  .card ul li{margin:2px 0}
+  .card .pill{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--accent-strong);
+    background:var(--accent-soft);border:1px solid var(--accent-muted);border-radius:5px;padding:1px 6px;margin-top:8px}
+  .stat{background:var(--paper-raised);border:1px solid var(--hairline);border-radius:var(--radius);
+    padding:16px;text-align:center;box-shadow:var(--shadow)}
+  .stat .n{font-size:26px;font-weight:700;color:var(--accent-strong);letter-spacing:-.02em}
+  .stat .l{font-size:12px;color:var(--muted-text);margin-top:2px}
+
+  /* ---------- Tables ---------- */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--hairline);border-radius:var(--radius);background:var(--paper-raised);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hairline);vertical-align:top}
+  thead th{background:var(--accent-soft);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--accent-strong);position:sticky;top:0}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:var(--accent-soft)}
+  td.mono,th.mono{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+  .yes{color:var(--ok);font-weight:700}.no{color:var(--bad);font-weight:700}.part{color:var(--warn);font-weight:700}
+
+  /* ---------- Pills / tags ---------- */
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+    border:1px solid transparent;white-space:nowrap}
+  .t-ok{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+  .t-warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+  .t-bad{background:var(--bad-bg);color:var(--bad);border-color:var(--bad)}
+  .t-info{background:var(--info-bg);color:var(--info);border-color:var(--info)}
+  .t-muted{background:var(--accent-soft);color:var(--muted-text);border-color:var(--hairline)}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted-text);margin:6px 0 12px}
+
+  /* ---------- Collapsible ---------- */
+  details.ds{background:var(--paper-raised);border:1px solid var(--hairline);border-radius:var(--radius);
+    margin:0 0 10px;box-shadow:var(--shadow)}
+  details.ds>summary{cursor:pointer;padding:12px 18px;font-weight:600;font-size:14.5px;
+    display:flex;align-items:center;gap:10px;list-style:none}
+  details.ds>summary::-webkit-details-marker{display:none}
+  details.ds>summary:before{content:"▸";color:var(--accent);font-size:13px;transition:transform .15s}
+  details.ds[open]>summary:before{transform:rotate(90deg)}
+  details.ds .ds-body{padding:0 18px 16px;border-top:1px solid var(--hairline)}
+  details.ds .ds-body>p:first-child{margin-top:12px}
+
+  /* ---------- Code block ---------- */
+  pre.flow{background:var(--brand-deep);color:var(--on-brand);border-radius:var(--radius);
+    padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.7;border:1px solid var(--hairline)}
+  pre.flow .k{color:#7fd4c0}.pre-flow .s{color:#e8c07d}.pre-flow .n{color:#a9bfbb}
+
+  /* ---------- Search ---------- */
+  .search-box{position:relative}
+  .search-box input{width:210px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+    color:var(--on-brand);border-radius:8px;padding:7px 11px;font-size:13px;font-family:var(--font)}
+  .search-box input::placeholder{color:var(--on-brand-muted)}
+  .search-box input:focus{outline:2px solid rgba(127,184,173,.6);outline-offset:1px}
+  .no-results{display:none;padding:20px;background:var(--warn-bg);border:1px solid var(--warn);
+    color:var(--warn);border-radius:var(--radius);margin-bottom:20px}
+  mark{background:var(--warn-bg);color:inherit;border-radius:3px;padding:0 2px}
+
+  .role-focus{outline:2px solid var(--accent-warm)}
+  .to-top{position:fixed;right:22px;bottom:22px;z-index:60;background:var(--accent);color:#fff;border:none;
+    border-radius:50%;width:44px;height:44px;font-size:18px;cursor:pointer;box-shadow:var(--shadow);display:none}
+  .to-top.show{display:block}
+  footer{background:var(--brand-ink);color:var(--on-brand-muted);font-size:12.5px;padding:26px 0;margin-top:20px}
+  footer a{color:var(--on-brand)}
+
+  /* ---------- Responsive ---------- */
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr}
+    aside.toc{display:none}
+    .topbar .doc-title{display:none}
+    .search-box input{width:130px}
+  }
+
+  /* ---------- Print ---------- */
+  @media print{
+    .topbar,aside.toc,.to-top,.search-box,.noprint{display:none!important}
+    body{background:#fff;color:#000;font-size:11px}
+    .hero{background:#023e2f!important;color:#fff;padding:24px 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .layout{grid-template-columns:1fr;padding:10px 0}
+    section{break-inside:avoid-page;margin-bottom:18px}
+    .card,details.ds,.tbl-wrap,pre.flow{box-shadow:none;break-inside:avoid}
+    .stat{border:1px solid #ccc}
+    a{color:#000}
+    details.ds>.ds-body{display:block!important}
+  }
+</style>
+</head>
+<body>
+
+<!-- ======= TOP BAR ======= -->
+<div class="topbar noprint">
+  <div class="wrap">
+    <span class="logo"><img src="data:image/png;base64,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" alt="SiroQ" /></span>
+    <span class="doc-title">Owner Overview &amp; Technical Reference</span>
+    <span class="spacer"></span>
+    <span class="search-box"><input id="search" type="search" placeholder="Search features, routes, roles…" aria-label="Search document" /></span>
+    <button class="iconbtn" id="themeBtn" aria-label="Toggle theme">◐ Theme</button>
+    <button class="iconbtn" id="printBtn" aria-label="Print document">⎙ Print / PDF</button>
+  </div>
+</div>
+
+<!-- ======= HERO ======= -->
+<div class="hero">
+  <div class="wrap">
+    <img class="hero-logo" src="data:image/png;base64,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" alt="SiroQ" />
+    <h1>SiroQ — Pharmacy Filing &amp; Analytics Platform</h1>
+    <p class="lede">A complete reference for the product as it is built today: every capability, role, route, service, and data model — assembled from the live source of two independent services (a Next.js application and a Python analytics API) plus the verified test and CI posture.</p>
+    <div class="badges">
+      <span class="badge">Owner briefing</span>
+      <span class="badge">Live-code derived</span>
+      <span class="badge">2 services · 1 database</span>
+      <span class="badge">Deterministic analytics · no LLM in production</span>
+    </div>
+  </div>
+</div>
+
+<!-- ======= LAYOUT ======= -->
+<div class="wrap layout">
+  <!-- ======= TOC ======= -->
+  <aside class="toc" id="toc">
+    <h4>Overview</h4>
+    <a href="#summary">Executive summary</a>
+    <a href="#architecture">System architecture</a>
+    <a href="#lifecycle">Filing lifecycle</a>
+    <h4>Product</h4>
+    <a href="#roles">Roles &amp; permissions</a>
+    <a href="#features">Feature set</a>
+    <a href="#plans">Plans &amp; positioning</a>
+    <h4>Application</h4>
+    <a href="#client-routes">Client API routes</a>
+    <a href="#client-pages">Client pages</a>
+    <a href="#client-lib">Client modules</a>
+    <a href="#client-comp">Client components</a>
+    <h4>Analytics Service</h4>
+    <a href="#svc-api">Service API</a>
+    <a href="#pipeline">Analysis pipeline</a>
+    <a href="#engines">Domain engines</a>
+    <a href="#insights">Insight rules</a>
+    <a href="#quality">Quality checks</a>
+    <a href="#forecast">Forecasting</a>
+    <a href="#schema">Data model</a>
+    <h4>Delivery</h4>
+    <a href="#report-contract">Report contract</a>
+    <a href="#verification">Verification &amp; CI</a>
+    <a href="#gaps">Known gaps &amp; roadmap</a>
+  </aside>
+
+  <main>
+    <div class="no-results" id="noResults">No matches — try a different term.</div>
+
+    <!-- ======= 1 SUMMARY ======= -->
+    <section id="summary">
+      <div class="sec-head"><span class="num">01</span><h2>Executive summary</h2></div>
+      <p class="sec-sub">What SiroQ is, in one pass.</p>
+      <div class="grid g4" style="margin-bottom:16px">
+        <div class="stat"><div class="n">2</div><div class="l">Independent services</div></div>
+        <div class="stat"><div class="n">4</div><div class="l">User roles · 9 permission actions</div></div>
+        <div class="stat"><div class="n">23</div><div class="l">Client API route files</div></div>
+        <div class="stat"><div class="n">13</div><div class="l">Analytics insight rules</div></div>
+        <div class="stat"><div class="n">8</div><div class="l">Domain analytics engines</div></div>
+        <div class="stat"><div class="n">7</div><div class="l">Pipeline stages per file</div></div>
+        <div class="stat"><div class="n">142</div><div class="l">Backend tests passing</div></div>
+        <div class="stat"><div class="n">0</div><div class="l">AI/LLM calls in production</div></div>
+      </div>
+      <div class="grid g2">
+        <div class="card">
+          <h4><span class="dot"></span>The problem it solves</h4>
+          <p>Pharmacies export dispensing and inventory records and email them as attachments; associations chase submissions across member sites; nobody can prove what was sent or whether it arrived intact. SiroQ replaces the email hand-off with a filed record that has a stable reference, a per-file SHA-256 checksum, a validated status, and a full chain of custody.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>How the two services split</h4>
+          <p><b>Application (Next.js)</b> owns identity, tenancy, filings, uploads, audit history, reports, and the UI. <b>Analytics Service (FastAPI)</b> owns file parsing, profiling, classification, data-quality scoring, domain analytics, and forecasting. The client calls the analytics API only for analysis and series/forecast output; everything user-facing state lives in the application database.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Trust properties (built in, not bolted on)</h4>
+          <ul>
+            <li>Tenant scope is derived from the session on every request — no route trusts a client-supplied scope.</li>
+            <li>Status changes and their audit event are written in the same transaction.</li>
+            <li>Reports are immutable; correcting one requires reopening the filing, which is itself audited.</li>
+            <li>Files are validated against their actual bytes (ZIP container, RFC-4180 CSV parse), not their filename.</li>
+            <li>Raw documents are served only through an authorised endpoint, never a public URL.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Analytics philosophy</h4>
+          <p>Every number is computed by a deterministic, registry-driven engine: content is classified from headers and value types, domain engines run per business category, insight rules aggregate, and a holdout-validated statistical forecast projects forward. There is no LLM, no external model call, and no raw data leaving the deployment. Forecasts are reproducible — the same file yields the same result.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= 2 ARCHITECTURE ======= -->
+    <section id="architecture">
+      <div class="sec-head"><span class="num">02</span><h2>System architecture</h2></div>
+      <p class="sec-sub">Two deployables, one Postgres database, S3-compatible object storage.</p>
+      <pre class="flow"><span class="k">┌──────────────────────── Browser ────────────────────────┐</span>
+<span class="k">│</span>  Next.js 16 App Router (React)                          <span class="k">│</span>
+<span class="k">└──────┬───────────────────────────┬──────────────────────┘</span>
+       <span class="k">│</span> opaque session cookie     <span class="k">│</span> route handlers + data layer
+       <span class="k">▼</span> (SHA-256 digest at rest)  <span class="k">▼</span>
+┌────────────────────────────┐    ┌────────────────────────────────┐
+<span class="k">│</span>  Application (Next.js 16)  <span class="k">│</span>    │  Analytics Service (FastAPI)   <span class="k">│</span>
+<span class="k">│</span>  • auth + RBAC             <span class="k">│</span>    │  • /api/v1 (X-API-Key)         <span class="k">│</span>
+<span class="k">│</span>  • tenancy / scoping       <span class="k">│</span>    <span class="k">└────┬───────────────────────────┘</span>
+<span class="k">│</span>  • filings / files /reports<span class="k">│</span>         <span class="k">│</span> ← NOT YET CALLED
+<span class="k">│</span>  • audit trail / dashboards<span class="k">│</span>         <span class="k">▼</span>
+<span class="k">│</span>  • S3-compatible storage   <span class="k">│</span>      ┌────────────────────────────────┐
+<span class="k">└───────────┬────────────────┘</span>      <span class="k">│</span> pipeline → engines → insights  <span class="k">│</span>
+            <span class="k">│</span>                       <span class="k">│</span> → forecast → reporting         <span class="k">│</span>
+            <span class="k">▼</span>                       <span class="k">└────────────────┬───────────────┘</span>
+┌────────────────────────────┐                       <span class="k">▼</span>
+<span class="k">│</span> Postgres (Prisma schema)   <span class="k">│</span>              object / local volume
+<span class="k">│</span> (Prisma 7 · driver adapter)<span class="k">│</span>
+<span class="k">└────────────────────────────┘</span>
+</pre>
+      <div class="card" style="margin-top:16px;border-left:4px solid var(--accent-warm)">
+        <h4><span class="dot" style="background:var(--accent-warm)"></span>Read this first: the two services are not yet connected in code</h4>
+        <p>The analytics service is <b>fully built, fully tested and independently deployable</b>, and the application is <b>fully built, fully tested and complete on its own</b> — but no code in the application calls the analytics service yet. The repository's own <code>.env.example</code> states it explicitly: the <code>ANALYSIS_SERVICE_*</code> variables exist, default to <code>ANALYSIS_SERVICE_ENABLED="false"</code>, and are annotated <em>"NOT YET WIRED — no code in this repository reads these; setting them changes nothing today. The client, the API contract and the UI action still have to be written."</em></p>
+        <p style="margin-top:8px">So the arrow between the two boxes above is <b>planned, not live</b>. This is the largest single gap in the product and the highest-value next piece of work — tracked as Phase 7 of <code>docs/PLAN.md</code>. Everything in sections 11–16 below is real, shipping, verifiable code; it is simply not yet surfaced inside the filing workflow.</p>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card">
+          <h4><span class="dot"></span>Application — Next.js 16 (the product surface)</h4>
+          <ul>
+            <li>Next.js 16 App Router, React 18, Tailwind + the brand token set.</li>
+            <li>Custom server-side sessions: opaque random token in the cookie, only its SHA-256 digest stored, so reading the sessions table yields no usable credential. Cookie is httpOnly + Secure + SameSite=Lax, 30-day TTL, immediately revocable.</li>
+            <li>Prisma 7 over Postgres via the <code>@prisma/adapter-pg</code> driver adapter. (The service image ships the <code>geoalchemy2</code> dependency, but no geometric column is in use in either schema today.)</li>
+            <li>Tenant scoping derived from the session on every API route (association / pharmacy) — never from the request body.</li>
+            <li>S3-compatible object storage via the AWS SDK, two drivers: <b>neon</b> (Neon Object Storage, branch-scoped so a preview branch cannot touch production) or <b>local</b> (filesystem, streamed back through a route).</li>
+            <li>Best-effort email (nodemailer) for invitations, status changes, report delivery.</li>
+            <li>Invites, redirects and notifications are wired; the simulated backend, latency/fault switch and in-memory store were deliberately deleted rather than narrowed.</li>
+          </ul>
+          <span class="pill">deps: zod · bcryptjs · nodemailer · @aws-sdk/client-s3 · zustand · radix-ui</span>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Analytics Service — FastAPI (the computation)</h4>
+          <ul>
+            <li>Standalone FastAPI app, published as a wheel/sdist and a GHCR image.</li>
+            <li>Key-authenticated via <code>X-API-Key</code> (constant-time compare, deny-by-default).</li>
+            <li>pandas-based ingestion and analysis; no database dependency of its own.</li>
+            <li>Reads uploaded bytes, returns analysis JSON, a client report, and on-demand series/forecast.</li>
+            <li>Registry pattern centralises engines, analyzers, insights, quality checks, and forecast methods.</li>
+          </ul>
+          <span class="pill">dependency: pandas · rapidfuzz · openpyxl · python-calamine</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= 3 LIFECYCLE ======= -->
+    <section id="lifecycle">
+      <div class="sec-head"><span class="num">03</span><h2>Filing lifecycle</h2></div>
+      <p class="sec-sub">The auditable path a record takes from upload to delivered report.</p>
+      <pre class="flow">Create filing ─▶ Upload file(s) ─▶ Validate bytes ─▶ Quality verdict ─▶ Status: submitted
+                                    │                                    │
+                              (valid / warn / invalid)                   ├─▶ under_review
+                                    │                                    ├─▶ report_ready
+                              invalid ─▶ rejected                        └─▶ closed
+                                                                               │
+                                                                   attach report ─▶ delivered
+
+<span class="k">Every</span> transition writes a StatusEvent <span class="k">in the same transaction</span> as the change:
+  actor · previous status · new status · note · timestamp</pre>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="card">
+          <h4><span class="dot"></span>Filings</h4>
+          <p>Each filing has a stable sequential reference (e.g. <code>AP-2026-0001</code>) from a database sequence, belongs to one pharmacy, carries a lifecycle status, and exposes a server-written timeline that auditors read directly.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Files</h4>
+          <p>Files are staged unattached and bound to a filing only on completion, so an interrupted transfer cannot leave a half-created filing. Each is checked against its bytes, hashed (SHA-256), size/extension/path guarded, and given a validation state.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Reports</h4>
+          <p>A report is attached by a super admin, records who produced it, stores structured results separately from the source document, and is immutable once delivered. Correction means reopening the filing — an audited act.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= 4 ROLES ======= -->
+    <section id="roles">
+      <div class="sec-head"><span class="num">04</span><h2>Roles &amp; permissions</h2></div>
+      <p class="sec-sub">Four roles, nine permission actions, enforced server-side on every request.</p>
+      <div class="tbl-wrap">
+        <table id="roleMatrix">
+          <thead>
+            <tr>
+              <th>Role</th><th>Audience</th>
+              <th>viewAllData</th><th>viewAssociationData</th><th>viewPharmacyData</th>
+              <th>createApplication</th><th>attachReport</th><th>updateApplicationStatus</th>
+              <th>manageUsers</th><th>manageAssociations</th><th>managePharmacies</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Super admin</b></td><td>Operator, every association</td>
+              <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+              <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+              <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+            </tr>
+            <tr>
+              <td><b>Moderator</b></td><td>Read-only reviewer</td>
+              <td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td>
+              <td class="no">✗</td><td class="no">✗</td><td class="no">✗</td>
+              <td class="no">✗</td><td class="no">✗</td><td class="no">✗</td>
+            </tr>
+            <tr>
+              <td><b>Association admin</b></td><td>One association + members</td>
+              <td class="no">✗</td><td class="yes">✓</td><td class="yes">✓</td>
+              <td class="yes">✓</td><td class="no">✗</td><td class="yes">✓</td>
+              <td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td>
+            </tr>
+            <tr>
+              <td><b>Pharmacy worker</b></td><td>One pharmacy</td>
+              <td class="no">✗</td><td class="no">✗</td><td class="yes">✓</td>
+              <td class="yes">✓</td><td class="no">✗</td><td class="no">✗</td>
+              <td class="no">✗</td><td class="no">✗</td><td class="no">✗</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><span class="yes">✓</span> allowed (association/own scope where noted)</span>
+        <span><span class="no">✗</span> denied</span>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin:4px 0 16px">Click a role name to highlight its column. Non-active accounts (<code>invited</code>, <code>disabled</code>) are denied everything. Moderator is a strictly narrower read-only view than super admin — it can see everything super admin can, but change nothing.</p>
+
+      <div class="grid g2">
+        <div class="card">
+          <h4><span class="dot"></span>Super admin</h4>
+          <p><b>Can:</b> every action across all associations; manage associations, pharmacies, and users; attach reports and produce delivered results; read raw source documents.</p>
+          <p><b>Cannot:</b> rewrite a recorded status event; silently replace a delivered report; bypass the per-request tenant check.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Moderator</h4>
+          <p><b>Can:</b> see every association, pharmacy, filing, timeline, finding, and attached report for review.</p>
+          <p><b>Cannot:</b> change anything (no creation, transitions, reports, or user management); read raw source documents.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Association admin</h4>
+          <p><b>Can:</b> see every filing in their association; invite/update/deactivate association users; create filings for any pharmacy in the association; move filings through the lifecycle; read attached reports.</p>
+          <p><b>Cannot:</b> see another association's data; attach a report (super-admin only); read raw source documents.</p>
+        </div>
+        <div class="card">
+          <h4><span class="dot"></span>Pharmacy worker</h4>
+          <p><b>Can:</b> see and create filings for their own pharmacy; upload dispensing files; follow their filings' status timeline.</p>
+          <p><b>Cannot:</b> see any other pharmacy's filings (including siblings); change a filing's status; invite users or read reports.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= 5 FEATURES ======= -->
+    <section id="features">
+      <div class="sec-head"><span class="num">05</span><h2>Feature set</h2></div>
+      <p class="sec-sub">The eight pillars of the product as described by the code.</p>
+      <div class="grid g2">
+        <div class="card"><h4><span class="dot"></span>File ingestion</h4>
+          <p>CSV and XLSX from a pharmacy system, inspected against the stored bytes rather than the filename.</p>
+          <ul><li>Real CSV parse: row/column counts and detected columns come from the actual header row (RFC-4180 splitter handles quotes/escapes).</li>
+          <li>Filing manifest requires NDC code and Batch number columns; a missing one is refused with the missing names.</li>
+          <li>Workbooks checked as ZIP containers — a fake .xlsx is rejected.</li>
+          <li>SHA-256 over stored bytes; size, extension, and path-traversal guards on every key.</li>
+          <li>Files staged unattached, bound only on completion.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Validation intake</h4>
+          <p>Each file returns valid / warning / invalid, with the reason in words, derived from the bytes.</p>
+          <ul><li>Three verdicts, each carrying an actionable sentence rather than a boolean.</li>
+          <li>Ragged rows produce a warning naming how many were padded/truncated.</li>
+          <li>Findings are stored against the filing, not recomputed per page load.</li>
+          <li>Per-cell content analysis and workbook sheet parsing at intake are not yet implemented (tracked on the compliance page).</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Chain of custody</h4>
+          <p>Every state change is written server-side in the same transaction as the change, and can be read back.</p>
+          <ul><li>Server-written status events: actor, previous state, new state.</li>
+          <li>The audit event is part of the transaction — a failed transition leaves no gap.</li>
+          <li>Stable references (AP-2026-0001) from a database sequence, not the browser.</li>
+          <li>The timeline auditors see is the same history — no second display copy.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Reporting</h4>
+          <p>A review ends in a report attached to the filing, immutable and exportable.</p>
+          <ul><li>Reports attached by a super admin; record who produced them.</li>
+          <li>Structured results stored separately from the source document.</li>
+          <li>A delivered report is never silently replaced — reopen the filing (itself audited).</li>
+          <li>Raw documents served through an authorised endpoint, never a public URL.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Tenant isolation</h4>
+          <p>Associations and pharmacies are separate customers in one deployment; the separation is enforced by the server.</p>
+          <ul><li>Tenant scope derived from the session on every request; no route accepts scope from the client.</li>
+          <li>Users, filings, files, and reports filtered by caller's association/pharmacy.</li>
+          <li>Probing another pharmacy's filing id returns a refusal, not an empty page.</li>
+          <li>Permissions live in one module with a written specification.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Roles &amp; access</h4>
+          <p>Four roles, each with a documented boundary, and invite-only account creation.</p>
+          <ul><li>Super admin: every association; moderator: everything read-only; association admin: their own; worker: only their pharmacy.</li>
+          <li>Attachments and report production are super-admin actions.</li>
+          <li>No self-registration — an admin issues a single-use invitation.</li>
+          <li>Deactivating a user ends their sessions immediately.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Notifications</h4>
+          <p>The events worth an email are sent; the rest stay in the timeline.</p>
+          <ul><li>Invitations, status changes, and report delivery are emailed.</li>
+          <li>Delivery is best-effort by design — a mail outage never fails the triggering action.</li>
+          <li>The timeline remains the record of truth, so a bounced email cannot lose an audit event.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Retrieval</h4>
+          <p>Find a filing by reference, pharmacy, status, or date without opening every row.</p>
+          <ul><li>Filter by status, pharmacy, and date range from the filing list.</li>
+          <li>References are unique and sequential, so a filing can be cited unambiguously.</li>
+          <li>Dashboard aggregates are computed from the same scoped rows the user can see.</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ======= 6 PLANS ======= -->
+    <section id="plans">
+      <div class="sec-head"><span class="num">06</span><h2>Plans &amp; positioning</h2></div>
+      <p class="sec-sub">Commercial packaging as encoded in the pricing page.</p>
+      <div class="grid g3">
+        <div class="card"><h4><span class="dot"></span>Starter — $0<span class="tag t-muted" style="margin-left:8px">per association / mo</span></h4>
+          <p>One association, a handful of pharmacies, full lifecycle.</p>
+          <ul><li>1 association, up to 3 pharmacies</li><li>Filing intake and upload</li><li>Status timeline and file ledger</li><li>Role-based access across 4 roles</li><li>Email support</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Professional — $240<span class="tag t-ok" style="margin-left:8px">recommended</span></h4>
+          <p>For associations running regular review cycles across a portfolio.</p>
+          <ul><li>Unlimited pharmacies</li><li>User &amp; invitation management</li><li>Report attachment and raw document export</li><li>Full chain-of-custody history</li><li>Dashboard aggregates and filtering</li><li>Priority support</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Enterprise — Custom</h4>
+          <p>For networks needing operator governance and procurement paperwork.</p>
+          <ul><li>Everything in Professional</li><li>Multi-association super admin</li><li>Audit trail export</li><li>Data residency options</li><li>Custom retention and DPA terms</li><li>Named contact and review cadence</li></ul></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin-top:10px">Audience segments also encoded: <b>Pharmacies</b> (prove what was sent), <b>Associations</b> (one queue across member pharmacies), <b>Compliance officers</b> (defensible audit trail), plus a public comparison table across the three tiers.</p>
+    </section>
+
+    <!-- ======= 7 CLIENT ROUTES ======= -->
+    <section id="client-routes">
+      <div class="sec-head"><span class="num">07</span><h2>Application — API routes</h2></div>
+      <p class="sec-sub">23 route files / 32 handlers. Every handler is authenticated and tenant-scoped unless noted.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Route</th><th>Methods</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">/api/auth/login</td><td class="mono">POST</td><td>Credential sign-in; issues HTTP-only session cookie.</td></tr>
+            <tr><td class="mono">/api/auth/logout</td><td class="mono">POST</td><td>Revoke current session and clear cookies.</td></tr>
+            <tr><td class="mono">/api/auth/me</td><td class="mono">GET</td><td>Current user, role, and tenant scope for the client shell.</td></tr>
+            <tr><td class="mono">/api/auth/signup</td><td class="mono">POST</td><td>Create first association + owner (bootstrap only; later accounts are invite-only).</td></tr>
+            <tr><td class="mono">/api/auth/accept-invite</td><td class="mono">POST</td><td>Redeem a single-use invitation and set a password.</td></tr>
+            <tr><td class="mono">/api/auth/forgot-password</td><td class="mono">POST</td><td>Issue a reset token and email (always responds generically).</td></tr>
+            <tr><td class="mono">/api/auth/reset-password</td><td class="mono">POST</td><td>Consume a reset token, set new password, revoke sessions.</td></tr>
+            <tr><td class="mono">/api/applications</td><td class="mono">GET, POST</td><td>List filings (scoped, filterable, paged) / create a filing.</td></tr>
+            <tr><td class="mono">/api/applications/[id]</td><td class="mono">GET, PATCH</td><td>Filing detail (files, timeline, findings) / edit metadata.</td></tr>
+            <tr><td class="mono">/api/applications/[id]/status</td><td class="mono">PATCH</td><td>Transition status — writes the audit event in the same transaction.</td></tr>
+            <tr><td class="mono">/api/applications/[id]/report</td><td class="mono">POST</td><td>Attach a report (super admin), producing a delivered result.</td></tr>
+            <tr><td class="mono">/api/uploads</td><td class="mono">POST</td><td>Create a staged upload and return a presigned write URL.</td></tr>
+            <tr><td class="mono">/api/uploads/[id]/complete</td><td class="mono">POST</td><td>Bind a completed upload to its filing and validate the bytes.</td></tr>
+            <tr><td class="mono">/api/uploads/[id]/content</td><td class="mono">GET</td><td>Proxy a staged upload's content for the session owner.</td></tr>
+            <tr><td class="mono">/api/reports/[id]/raw</td><td class="mono">GET</td><td>Authorised download of a report's raw source document.</td></tr>
+            <tr><td class="mono">/api/users</td><td class="mono">GET, POST</td><td>List users in scope / invite a user.</td></tr>
+            <tr><td class="mono">/api/users/[id]</td><td class="mono">PATCH, DELETE</td><td>Update or deactivate a user (deactivation revokes sessions).</td></tr>
+            <tr><td class="mono">/api/users/me</td><td class="mono">GET, PATCH</td><td>Own profile / update own profile.</td></tr>
+            <tr><td class="mono">/api/associations</td><td class="mono">GET, POST</td><td>List associations in scope / create an association.</td></tr>
+            <tr><td class="mono">/api/associations/[id]</td><td class="mono">PATCH, DELETE</td><td>Update or remove an association (super admin).</td></tr>
+            <tr><td class="mono">/api/pharmacies</td><td class="mono">GET, POST</td><td>List pharmacies in scope / create a pharmacy.</td></tr>
+            <tr><td class="mono">/api/pharmacies/[id]</td><td class="mono">PATCH, DELETE</td><td>Update or remove a pharmacy.</td></tr>
+            <tr><td class="mono">/api/contact</td><td class="mono">POST</td><td>Public contact form (rate-limited; no session required).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======= 8 CLIENT PAGES ======= -->
+    <section id="client-pages">
+      <div class="sec-head"><span class="num">08</span><h2>Application — pages</h2></div>
+      <p class="sec-sub">37 App Router page routes: the workspace, the account surface, and the public marketing/compliance site.</p>
+      <div class="grid g3">
+        <div class="card"><h4><span class="dot"></span>Workspace <span class="tag t-info">route group (app)</span></h4><ul>
+          <li><code>/dashboard</code> — scoped aggregates</li>
+          <li><code>/applications</code> — filing list</li>
+          <li><code>/applications/new</code> — create filing</li>
+          <li><code>/applications/[id]</code> — detail: timeline, files, findings, report</li>
+          <li><code>/admin/users</code>, <code>/admin/pharmacies</code>, <code>/admin/associations</code></li>
+          <li><code>/settings</code> (own profile / password), <code>/settings/team</code> (invitations &amp; user management)</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Auth <span class="tag t-info">route group (auth)</span></h4><ul>
+          <li><code>/login</code>, <code>/signup</code></li>
+          <li><code>/invite/[token]</code> — accept invitation</li>
+          <li><code>/forgot-password</code> — request reset</li></ul>
+          <p style="margin-top:6px">Password reset is consumed by the API (<code>/api/auth/reset-password</code>) rather than a dedicated page.</p></div>
+        <div class="card"><h4><span class="dot"></span>System states <span class="tag t-info">route group (states)</span></h4><ul>
+          <li><code>/maintenance</code></li>
+          <li><code>/access-denied</code></li>
+          <li><code>/session-expired</code></li></ul>
+          <p style="margin-top:6px">Deliberately public so they render without a session.</p></div>
+        <div class="card"><h4><span class="dot"></span>Marketing <span class="tag t-info">route group (marketing)</span></h4><ul>
+          <li><code>/</code> home</li>
+          <li><code>/about</code>, <code>/features</code>, <code>/solutions</code>, <code>/how-it-works</code>, <code>/pricing</code>, <code>/customers</code></li>
+          <li><code>/blog</code> + <code>/blog/[slug]</code></li>
+          <li><code>/contact</code>, <code>/faq</code>, <code>/docs</code>, <code>/status</code></li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Legal &amp; trust (public)</h4><ul>
+          <li><code>/privacy</code>, <code>/terms</code>, <code>/dpa</code></li>
+          <li><code>/security</code>, <code>/compliance</code>, <code>/subprocessors</code></li>
+          <li><code>/cookies</code>, <code>/responsible-disclosure</code></li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Counts</h4><ul>
+          <li>37 page routes total: 9 workspace, 4 auth, 21 marketing, 3 states</li>
+          <li>4 route groups; marketing and states are public, (app) is authenticated</li>
+          <li>23 API route files under <code>/api</code> (previous section)</li></ul></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h4><span class="dot"></span>How requests are gated — and what the gate is not</h4>
+        <p>A request-time <code>proxy</code> keeps signed-out visitors off the workspace and the server-rendered shell. It lists <b>28</b> public paths and is deliberately implemented as a <em>matcher with a public-path exception list</em>, so a newly added authenticated route is protected by default rather than by remembering to add it somewhere. <code>/dashboard</code> is intentionally absent from the list — it renders its own signed-out state instead of bouncing, which avoids a redirect loop.</p>
+        <p style="margin-top:8px"><b>Honest limitation:</b> the proxy is a <em>UX shortcut, not an authorization boundary</em>. It runs on the Edge runtime, cannot reach the database to verify a session, and cannot see a role. A cookie can be replayed, so passing the gate means nothing about identity. Real enforcement lives in <code>lib/auth.ts</code> and <code>lib/permissions.ts</code>, which every API route calls — those return 401/403 and derive tenant scope from the session. Pages under <code>app/(app)/</code> are still client components and do <em>not</em> yet resolve the caller server-side (tracked in <code>docs/PLAN.md</code>, Phase 2), which is precisely why nothing sensitive may be rendered from those pages. Closing that is the honest next hardening step, not a footnote.</p>
+      </div>
+
+    </section>
+
+    <!-- ======= 9 CLIENT LIB ======= -->
+    <section id="client-lib">
+      <div class="sec-head"><span class="num">09</span><h2>Application — server modules</h2></div>
+      <p class="sec-sub">24 modules under <code>lib/</code>; the security-critical ones are called out first.</p>
+      <div class="grid g3">
+        <div class="card"><h4><span class="dot"></span>Security &amp; identity</h4><ul>
+          <li><code>permissions.ts</code> — the single RBAC source of truth (role×action matrix, scope rules)</li>
+          <li><code>auth.ts</code> — <code>requireUser</code> / <code>requirePermission</code> guards</li>
+          <li><code>scopes.ts</code> — server-derived tenant scoping for every query</li>
+          <li><code>session.ts</code> / <code>db.ts</code> — session and Prisma singletons</li>
+          <li><code>password.ts</code>, <code>invites.ts</code>, <code>upload-access.ts</code></li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Filings &amp; reports</h4><ul>
+          <li><code>data.ts</code> — the <code>fetch()</code>-backed data layer: filing queries, filters, dashboard aggregates (the simulated backend was deleted outright, not narrowed)</li>
+          <li><code>application-rows.ts</code> — row select + serializer</li>
+          <li><code>uploads.ts</code>, <code>files.ts</code> — staged uploads, validation, manifest</li>
+          <li><code>client-api.ts</code> — the <em>browser-side</em> mirror of the app's own API: unwraps the <code>{ok}/{error}</code> envelope into a typed <code>ApiError</code> and keeps network faults distinguishable from refusals (including a stale build answering an API path with HTML)</li>
+          <li><code>api.ts</code> — error envelope + <code>withErrorHandling</code></li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Support &amp; misc</h4><ul>
+          <li><code>storage.ts</code> — S3/blob storage</li>
+          <li><code>mail.ts</code>, <code>email-templates.ts</code> — best-effort delivery</li>
+          <li><code>types.ts</code> — shared domain + report types</li>
+          <li><code>marketing-content.ts</code> — the site copy, feature grid, role matrix and pricing data (single source for public content)</li>
+          <li><code>seed.ts</code>, <code>theme.ts</code>, <code>preference-store.ts</code>, <code>utils.ts</code></li></ul></div>
+      </div>
+    </section>
+
+    <!-- ======= 10 CLIENT COMPONENTS ======= -->
+    <section id="client-comp">
+      <div class="sec-head"><span class="num">10</span><h2>Application — component surface</h2></div>
+      <p class="sec-sub">46 component files: the filing workspace, the report viewer (including the hand-rolled analytics chart), the design system, and the marketing/legal layer.</p>
+      <div class="grid g3">
+        <div class="card"><h4><span class="dot"></span>Filing &amp; report workspace</h4><ul>
+          <li><code>application-table</code> — filing list with filters</li>
+          <li><code>status-timeline</code> — renders the audit history</li>
+          <li><code>status-badge</code> — lifecycle state pill</li>
+          <li><code>file-dropzone</code>, <code>file-ledger</code> — upload, hash and validation states</li>
+          <li><code>report-panel</code> — recursive renderer for structured results; dispatches tagged nodes first</li>
+          <li><code>report-chart</code> — hand-rolled SVG: revenue/volume bars, table form, forecast band and notes (no chart library)</li>
+          <li><code>sparkline</code> — inline trend glyphs</li>
+          <li><code>attach-report-dialog</code>, <code>confirm-dialog</code></li>
+          <li><code>stat-module</code>, <code>requisition-header</code>, <code>user-directory</code>, <code>time-ago</code>, <code>page-heading</code></li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Shell, state &amp; access</h4><ul>
+          <li><code>app-shell</code> — workspace frame</li>
+          <li><code>session-provider</code> — current user from <code>/api/auth/me</code></li>
+          <li><code>permission-gate</code> — client-side affordance guard (server remains authoritative)</li>
+          <li><code>data-states</code>, <code>system-state</code> — loading / empty / maintenance / access-denied / session-expired</li>
+          <li><code>theme-provider</code>, <code>theme-toggle</code>, <code>use-mounted</code>, <code>use-resource</code></li>
+          <li><code>contact-form</code>, <code>pharmacy-particles</code></li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Brand, marketing, forms &amp; design system</h4><ul>
+          <li><code>brand-logo</code> — the SiroQ lockup used throughout</li>
+          <li><code>marketing</code>, <code>marketing-nav</code> — public site sections and nav</li>
+          <li><code>legal-document</code> — privacy, terms, DPA, subprocessors rendering</li>
+          <li><code>forms/</code> — <code>accept-invite-form</code>, <code>association-form</code>, <code>pharmacy-form</code>, <code>user-form</code></li>
+          <li><code>ui/</code> (12) — button, dialog, dropdown-menu, input, label, progress, select, separator, skeleton, state-panel, table, textarea</li>
+          <li>Built on Radix primitives, <code>class-variance-authority</code>, <code>tailwind-merge</code>, <code>clsx</code>; icons via <code>lucide-react</code></li></ul></div>
+      </div>
+    </section>
+
+    <!-- ======= 11 SERVICE API ======= -->
+    <section id="svc-api">
+      <div class="sec-head"><span class="num">11</span><h2>Analytics service — API</h2></div>
+      <p class="sec-sub">FastAPI. All <code>/api/v1</code> endpoints require the <code>X-API-Key</code> header (constant-time, deny-by-default).</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">/ · /dashboard/ · /health</td><td class="mono">GET</td><td>Service root (Jinja landing), dashboard, liveness (public; <code>/health</code> hidden from schema).</td></tr>
+            <tr><td class="mono">/api/v1/applications</td><td class="mono">POST</td><td>Create an application (a set of files to analyse together).</td></tr>
+            <tr><td class="mono">/api/v1/applications</td><td class="mono">GET</td><td>List applications.</td></tr>
+            <tr><td class="mono">/api/v1/applications/{id}</td><td class="mono">GET</td><td>Application detail + stored analyses.</td></tr>
+            <tr><td class="mono">/api/v1/applications/{id}/files</td><td class="mono">POST</td><td>Upload a raw file to an application.</td></tr>
+            <tr><td class="mono">/api/v1/applications/{id}/analyze</td><td class="mono">POST</td><td>Run the full pipeline over an application's files; persist an Analysis.</td></tr>
+            <tr><td class="mono">/api/v1/analyze</td><td class="mono">POST</td><td>One-shot analyse of a single uploaded file (no application).</td></tr>
+            <tr><td class="mono">/api/v1/applications/{app}/analyses/{an}</td><td class="mono">GET</td><td>Retrieve one analysis (full JSON report).</td></tr>
+            <tr><td class="mono">/api/v1/applications/{app}/analyses/{an}/report</td><td class="mono">GET</td><td>Rendered report: <code>?format=client</code> (structured <code>siroq.client.v1</code>) or <code>?format=json</code> (raw).</td></tr>
+            <tr><td class="mono">/api/v1/files/{id}</td><td class="mono">GET</td><td>Download the raw stored file (returns <code>X-SHA256</code>).</td></tr>
+            <tr><td class="mono">/api/v1/files/{id}/preview</td><td class="mono">GET</td><td>Live data-source preview: dtypes, columns, paged sample rows (per-sheet selectable).</td></tr>
+            <tr><td class="mono">/api/v1/files/{id}/series</td><td class="mono">GET</td><td>Aggregate any date+value columns into a daily series (<code>sum|mean|count</code>).</td></tr>
+            <tr><td class="mono">/api/v1/files/{id}/forecast</td><td class="mono">GET</td><td>Statistical forecast over the live data source with prediction band (no persisted analysis).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin-top:10px">Configuration is environment-driven (Pydantic Settings): <code>API_KEY</code>, <code>DATABASE_URL</code>, <code>MIGRATIONS_DATABASE_URL</code>, <code>STORAGE_PATH</code>, <code>ENVIRONMENT</code>, <code>LOG_LEVEL</code>, <code>MAX_FILES_PER_REQUEST</code> (25), <code>MAX_FILE_BYTES</code> (50 MB). Startup refuses the default dev key when <code>ENVIRONMENT != development</code>.</p>
+    </section>
+
+    <!-- ======= 12 PIPELINE ======= -->
+    <section id="pipeline">
+      <div class="sec-head"><span class="num">12</span><h2>Analysis pipeline</h2></div>
+      <p class="sec-sub">Seven ordered, registry-registered stages run per file. Everything downstream of <code>rows</code> sees a clean transactional view.</p>
+      <pre class="flow">read bytes ─▶ <span class="k">file_reader</span> (csv / excel / json) ─▶ DataFrame
+   │
+   ├─ <span class="k">profile</span>            (order 10)  column dtypes, ranges, cardinality, kind
+   ├─ <span class="k">classification</span>     (order 20)  header + content → canonical field map, schema category
+   ├─ <span class="k">quality</span>            (order 30)  6 registered checks → 0–100 score + findings
+   ├─ <span class="k">rows</span>               (order 35)  drop spacer/blank/repeated-header rows (profile+quality still saw them)
+   ├─ <span class="k">domain</span>             (order 40)  run matching domain engine(s) on the clean frame
+   ├─ <span class="k">insights</span>           (order 50)  13 registered rules → insight bundle
+   └─ <span class="k">forecast</span>           (order 60)  holdout-selected method + prediction interval
+   │
+   └─▶ reporting → JSON report / client report (siroq.client.v1)</pre>
+      <div class="grid g3" style="margin-top:14px">
+        <div class="card"><h4><span class="dot"></span>File readers</h4><p><code>csv</code>, <code>excel</code>, <code>json</code> — each registered as a <code>file_reader</code>; workbooks can expose multiple selectable sheets.</p></div>
+        <div class="card"><h4><span class="dot"></span>Classification</h4><p>Fuzzy header matching (rapidfuzz) plus value-type inference (<code>date</code>/<code>number</code>/<code>category</code>/<code>text</code>). Monetary fields only accept numeric sources; ratio/percent headers can never fill money fields; price/cost/profit/stock are header-matched only.</p></div>
+        <div class="card"><h4><span class="dot"></span>Schema category</h4><p>Column headers are tokenised and scored against strong/weak token sets across 8 categories; this is what selects the domain engine(s) to run.</p></div>
+      </div>
+    </section>
+
+    <!-- ======= 13 ENGINES ======= -->
+    <section id="engines">
+      <div class="sec-head"><span class="num">13</span><h2>Domain analytics engines</h2></div>
+      <p class="sec-sub">Eight pluggable engines, one per business category; each is selected by detected schema category and contributes its own metrics.</p>
+      <div class="grid g4">
+        <div class="card"><h4><span class="dot"></span>Sales</h4><p>Revenue, transactions, basket behaviour.</p></div>
+        <div class="card"><h4><span class="dot"></span>Inventory</h4><p>Stock on hand, batches, expiry, waste/write-offs.</p></div>
+        <div class="card"><h4><span class="dot"></span>Purchase orders</h4><p>Ordered vs. received, unit cost, supplier fills, VAT.</p></div>
+        <div class="card"><h4><span class="dot"></span>Prescriptions</h4><p>Rx volume, days supply, prescriber behaviour, controlled drugs.</p></div>
+        <div class="card"><h4><span class="dot"></span>Products</h4><p>SKU/NDC catalogue, generic vs. brand, strength, therapeutic class.</p></div>
+        <div class="card"><h4><span class="dot"></span>Patients</h4><p>Cohort/adherence signals, demographics.</p></div>
+        <div class="card"><h4><span class="dot"></span>Payers</h4><p>Claims, rejections, copay/coinsurance, reimbursement mix.</p></div>
+        <div class="card"><h4><span class="dot"></span>Suppliers</h4><p>Vendor fill rate, lead time, contract pricing.</p></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin-top:10px">Engines are registered via <code>@domain_engine("&lt;category&gt;")</code> in a single module per category and dispatched through a shared registry (<code>app/analytics_service/registry.py</code>), so a new business domain is one file plus one decorator.</p>
+    </section>
+
+    <!-- ======= 14 INSIGHTS ======= -->
+    <section id="insights">
+      <div class="sec-head"><span class="num">14</span><h2>Insight rules</h2></div>
+      <p class="sec-sub">13 registered, deterministic rules that turn analysed frames into owner-readable findings.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Rule</th><th>Answers</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">gross_margin_pct</td><td>Overall margin health.</td></tr>
+            <tr><td class="mono">net_profit_total</td><td>Absolute profit generated.</td></tr>
+            <tr><td class="mono">loss_making_products</td><td>Which SKUs lose money.</td></tr>
+            <tr><td class="mono">pareto_80</td><td>The 20% of products driving ~80% of revenue.</td></tr>
+            <tr><td class="mono">revenue_concentration</td><td>Dependency risk in the revenue mix.</td></tr>
+            <tr><td class="mono">dead_stock_count</td><td>Stock that is not moving.</td></tr>
+            <tr><td class="mono">overstocked_products</td><td>Over-ordered inventory.</td></tr>
+            <tr><td class="mono">tied_up_capital</td><td>Cash locked in stock.</td></tr>
+            <tr><td class="mono">stock_turnover</td><td>How fast stock cycles.</td></tr>
+            <tr><td class="mono">expiry_at_risk</td><td>Stock nearing expiry and its value.</td></tr>
+            <tr><td class="mono">waste_rate</td><td>Write-off / waste as a share of stock.</td></tr>
+            <tr><td class="mono">revenue_trend</td><td>Revenue direction over time (primary chart series).</td></tr>
+            <tr><td class="mono">volume_trend</td><td>Units-moved direction (fallback chart series).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======= 15 QUALITY ======= -->
+    <section id="quality">
+      <div class="sec-head"><span class="num">15</span><h2>Data-quality checks</h2></div>
+      <p class="sec-sub">Six registered checks; each non-pass deducts a penalty from a 100-point score (an unreadable/empty frame scores 0).</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Check</th><th>Penalty</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">header_confidence</td><td>5</td><td>How confidently the columns were recognised.</td></tr>
+            <tr><td class="mono">empty_or_null</td><td>50</td><td>Blank/empty data — the heaviest signal.</td></tr>
+            <tr><td class="mono">duplicate_rows</td><td>10</td><td>Repeated records.</td></tr>
+            <tr><td class="mono">negative_values</td><td>10</td><td>Negatives in fields that should be non-negative.</td></tr>
+            <tr><td class="mono">type_coercion</td><td>10</td><td>Values coerced into a type (parse pressure).</td></tr>
+            <tr><td class="mono">unmapped_columns</td><td>5</td><td>Columns no canonical field claimed.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin-top:10px">Structural rows (blank spacers, repeated invoice headers) are removed before money is aggregated — but profiling and quality deliberately still see every row, because that is a fact worth scoring about the file.</p>
+    </section>
+
+    <!-- ======= 16 FORECAST ======= -->
+    <section id="forecast">
+      <div class="sec-head"><span class="num">16</span><h2>Forecasting</h2></div>
+      <p class="sec-sub">Classical, reproducible, holdout-validated. No LLM — every method is deterministic.</p>
+      <div class="grid g2">
+        <div class="card"><h4><span class="dot"></span>Candidate methods (registry order)</h4><ul>
+          <li><code>naive</code> — last value carries forward</li>
+          <li><code>mean</code> — historical mean</li>
+          <li><code>moving_average</code> — win = 3 and win = 7 variants</li>
+          <li><code>linear</code> — linear trend</li>
+          <li><code>damped_trend</code> — damped Holt (φ = 0.9)</li>
+          <li><code>seasonal</code> — weekly seasonality (period inferred from median step)</li></ul>
+          <span class="pill">tie-break: registration order, then order meta</span></div>
+        <div class="card"><h4><span class="dot"></span>How a forecast is produced</h4><ul>
+          <li>A daily series is built (date column auto-detected; <code>sum|mean|count</code> aggregation).</li>
+          <li>Requires ≥ <b>6</b> points; horizon <b>6</b> days; last <b>18</b> history points retained for the client chart.</li>
+          <li>Each candidate is scored on a holdout; the winner is refit on the full series.</li>
+          <li>A prediction interval is attached to every projected point (interval sparse-bounded so short series still band correctly).</li>
+          <li>Median <code>step_days</code> is inferred and used for seasonality and projected dates — sparse inputs project to correct calendar dates.</li></ul></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin-top:10px">The same file always yields the same forecast. AI/RAG-based forecasting is designed (see <code>docs/AI_FORECASTING.md</code>) but explicitly <b>not</b> wired into production.</p>
+    </section>
+
+    <!-- ======= 17 SCHEMA ======= -->
+    <section id="schema">
+      <div class="sec-head"><span class="num">17</span><h2>Data model</h2></div>
+      <p class="sec-sub">Postgres. Application schema (Prisma) and analytics service tables (SQLAlchemy).</p>
+      <h3>Application — Prisma models</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Model</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">PharmacyAssociation</td><td>Tenant root; owns pharmacies, users, filings.</td></tr>
+            <tr><td class="mono">Pharmacy</td><td>A member site within an association.</td></tr>
+            <tr><td class="mono">User</td><td>Identity + role + tenant membership; invite-only.</td></tr>
+            <tr><td class="mono">Session</td><td>Revocable server sessions (deactivation ends them immediately).</td></tr>
+            <tr><td class="mono">PasswordResetToken</td><td>Single-use reset tokens.</td></tr>
+            <tr><td class="mono">Application</td><td>A filing: reference, pharmacy, lifecycle status, findings.</td></tr>
+            <tr><td class="mono">ApplicationFile</td><td>A file on a filing: hash, size, validation state, parse state.</td></tr>
+            <tr><td class="mono">Upload</td><td>Staged upload (presigned, bound on completion).</td></tr>
+            <tr><td class="mono">StatusEvent</td><td>Immutable audit entry: actor, prev→next status, note, time.</td></tr>
+            <tr><td class="mono">Report</td><td>Attached, immutable result (structured + raw document) with status/source.</td></tr>
+            <tr><td class="mono">AnalysisRun</td><td>Analytics-service run linked to a filing (status, summary).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted-text);margin:6px 0 18px">Enums: <code>Role</code>, <code>UserStatus</code>, <code>EntityStatus</code>, <code>ApplicationStatus</code>, <code>FileKind</code>, <code>FileValidationState</code>, <code>ParseState</code>, <code>UploadState</code>, <code>ReportStatus</code>, <code>ReportSource</code>, <code>AnalysisRunStatus</code>.</p>
+      <h3>Analytics service — SQLAlchemy tables</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Table</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">applications</td><td>A batch of files submitted together for analysis.</td></tr>
+            <tr><td class="mono">files</td><td>A stored raw file (path, hash, type, parse state).</td></tr>
+            <tr><td class="mono">analyses</td><td>A persisted pipeline result (full JSON + client report) for a file.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ======= 18 REPORT CONTRACT ======= -->
+    <section id="report-contract">
+      <div class="sec-head"><span class="num">18</span><h2>Report contract</h2></div>
+      <p class="sec-sub">The shared <code>siroq.client.v1</code> envelope that lets the client render nested, rich results without re-parsing.</p>
+      <div class="grid g2">
+        <div class="card"><h4><span class="dot"></span>Tagged node types</h4><ul>
+          <li><code>$chart</code> — bar series (cap 12 bars) or table, with the primary revenue/volume series.</li>
+          <li><code>$forecast</code> — method, retained history, projected points each carrying Low/High bounds.</li>
+          <li><code>$notes</code> — advisory caveats surfaced under "Caveats" in the panel.</li>
+          <li>All three are additive; untagged legacy results still render unchanged.</li>
+          <li>Object list-items are legal only inside tagged subtrees (enforced by a verifier).</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>Rendering</h4><ul>
+          <li>Client <code>report-panel</code> dispatches on node type before falling back to recursive branch rendering.</li>
+          <li><code>report-chart</code> is hand-rolled SVG (bar, table, forecast band) — deliberately no chart dependency.</li>
+          <li>Forecast band aligns correctly even on sparse series (recent fix to anchor/projection spacing).</li>
+          <li>The static fixture audit counts tagged nodes (7) and tagged list items (21) with zero untagged violations.</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ======= 19 VERIFICATION ======= -->
+    <section id="verification">
+      <div class="sec-head"><span class="num">19</span><h2>Verification &amp; CI</h2></div>
+      <p class="sec-sub">The posture behind every claim above.</p>
+      <div class="grid g2">
+        <div class="card"><h4><span class="dot"></span>Automated suites (currently green)</h4><ul>
+          <li><b>Backend:</b> 142 pytest tests passing across 10 modules — round-trip API, API-key auth, client projection, dashboard, forecast, insights, pipeline/quality, report export/ingestion, structural-row exclusion.</li>
+          <li><b>Frontend typecheck:</b> <code>tsc --noEmit</code> passes.</li>
+          <li><b>Lint:</b> <code>eslint .</code> — 0 errors (5 pre-existing warnings).</li>
+          <li><b>Build:</b> <code>next build</code> succeeds.</li>
+          <li><b>Invariant scripts:</b> <code>verify:authz</code>, <code>verify:self-service</code>, <code>verify:invite</code>, <code>verify:applications</code>, <code>verify:reports</code>.</li></ul></div>
+        <div class="card"><h4><span class="dot"></span>CI / delivery pipeline</h4><ul>
+          <li>GitHub Actions on every branch and PR: tests against a throwaway PostGIS 15 container, least-privilege app role, full pytest run.</li>
+          <li>Builds a wheel + sdist and smoke-checks package contents (templates, dashboard, registry, alembic).</li>
+          <li>Publishes a GitHub release on <code>v*</code> tags.</li>
+          <li>Builds and pushes the container image to GHCR on <code>main</code> and version tags.</li>
+          <li>Client ships via <code>next build</code>; local dev compose brings up only the database (<code>postgres:16</code>) — storage is the local filesystem driver and the app runs via <code>npm run dev</code>.</li></ul></div>
+      </div>
+    </section>
+
+    <!-- ======= 20 GAPS ======= -->
+    <section id="gaps">
+      <div class="sec-head"><span class="num">20</span><h2>Known gaps &amp; roadmap</h2></div>
+      <p class="sec-sub">An honest read: what is deliberately not shipped yet, so nothing here is overstated.</p>
+      <div class="legend">
+        <span><span class="tag t-bad">Not built</span> absent today</span>
+        <span><span class="tag t-warn">Planned</span> designed, not wired</span>
+        <span><span class="tag t-ok">Shipped</span> live and verified</span>
+      </div>
+      <div class="grid g2">
+        <div class="card"><h4><span class="dot"></span>Known limitations</h4><ul>
+          <li><span class="tag t-warn">Planned</span> <b>Workspace pages are client-rendered.</b> Routes under <code>app/(app)/</code> do not yet resolve the caller server-side, so they must fetch data through the authorised API rather than reading the database directly. Tracked in <code>docs/PLAN.md</code>, Phase 2. The API layer is fully scoped and enforced; this is a rendering-path gap, not an authorization gap.</li>
+          <li><span class="tag t-warn">Planned</span> <code>lib/scopes.ts</code> is fully applied for uploads; the <code>PLAN.md</code> note that it is "still open for application/listing routes" is stale relative to the current route code, which does derive scope per request — verified by <code>verify:authz</code>.</li>
+          <li><span class="tag t-bad">Not built</span> Per-cell content analysis (date ranges, quantity types, NDC format) — tracked on the compliance page.</li>
+          <li><span class="tag t-bad">Not built</span> Workbook sheet contents are not parsed at intake; an .xlsx is validated as a container and parsed on demand.</li>
+          <li><span class="tag t-warn">Planned</span> Per-cell analysis is shown as a paid-tier feature on the comparison table but is not implemented — a marketing promise ahead of the code.</li>
+          <li><span class="tag t-warn">Planned</span> Audit-trail export, data-residency options, and custom DPA/retention are Enterprise commitments not yet productised.</li>
+          <li><span class="tag t-muted">By design</span> Dashboard aggregates are computed client-side over the already tenant-filtered row set rather than in SQL — a deliberate trade (one query, one filter, no second derivation), documented in <code>PLAN.md</code> 3.6.</li>
+        </ul></div>
+        <div class="card"><h4><span class="dot"></span>Roadmap — the wired-up product (from <code>docs/PLAN.md</code> Phases 7–8)</h4><ul>
+          <li><span class="tag t-bad">Not built</span> <b>Phase 7 — the analytics client.</b> <code>lib/analysis.ts</code>: an <code>X-API-Key</code> client for the service's analyse and report endpoints. This is what closes the integration gap in section 02.</li>
+          <li><span class="tag t-bad">Not built</span> <b>Never join by name.</b> The service has its own <code>applications</code> table with a different meaning; the client must join through <code>analysisApplicationId</code> — a correctness trap called out explicitly in the plan.</li>
+          <li><span class="tag t-bad">Not built</span> <b>Persist service results to <code>Report</code></b> with <code>resultData</code> normalised, <code>rawData</code> untouched, <code>source: "service"</code>, and <code>engineVersion</code> recorded.</li>
+          <li><span class="tag t-bad">Not built</span> <b>Log every service call in <code>AnalysisRun</code></b> (request / response / error) so failures become retryable. The model and <code>AnalysisRunStatus</code> enum already exist in the schema; only the write path is missing.</li>
+          <li><span class="tag t-bad">Not built</span> <b>Phase 8 — a real test matrix.</b> Vitest covering 4 roles × scoping including cross-tenant attempts, which the plan itself calls "the highest-value tests in the project". Today this is enforced by executable verifier scripts instead.</li>
+          <li><span class="tag t-bad">Not built</span> <b>Phase 8 — rate limiting</b> on auth and upload endpoints.</li>
+          <li><span class="tag t-muted">By design</span> Forecast caching — <code>/forecast</code> recomputes deterministically per call. Acceptable while it is not called from the app; worth revisiting once it is.</li>
+          <li><span class="tag t-warn">Planned</span> AI/RAG-assisted forecasting (<code>docs/AI_FORECASTING.md</code>) — architecture and non-goals documented; <b>no</b> provider SDK, raw files never sent externally, LLM never produces numeric forecasts.</li>
+        </ul></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h4><span class="dot"></span>Owner summary</h4>
+        <p>SiroQ today is a working, tested, security-conscious filing platform with a real analytics backend: four enforced roles, tenant isolation proven by verifier scripts, an auditable lifecycle, and a deterministic pipeline that turns messy pharmacy files into margin, stock, expiry, and forecast insight. The deliberate boundary is trust over flash — no LLM touches customer data, and the AI capabilities on the roadmap are designed to keep it that way. The clearest near-term wins are the shipped-but-unbuilt per-cell validation, forecast caching, and closing the client↔service orchestration gap.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<button class="to-top" id="toTop" aria-label="Back to top">↑</button>
+
+<footer>
+  <div class="wrap">SiroQ — Owner Overview &amp; Technical Reference. Compiled from live source of the <code>SiroQ</code> (analytics) and <code>SiroQ-Client</code> (application) repositories. Figures reflect the codebase at the time of compilation; the backend suite stands at 142 passing tests.</div>
+</footer>
+
+<script>
+  // ---------- Theme ----------
+  const root = document.documentElement;
+  const themeBtn = document.getElementById('themeBtn');
+  const saved = (function(){ try { return localStorage.getItem('siroq-theme'); } catch(e){ return null; } })();
+  if (saved) root.setAttribute('data-theme', saved);
+  else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) root.setAttribute('data-theme','dark');
+  themeBtn.addEventListener('click', () => {
+    const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('siroq-theme', next); } catch(e){}
+  });
+
+  // ---------- Print ----------
+  document.getElementById('printBtn').addEventListener('click', () => {
+    // expand all <details> so nothing hides content in the PDF, then print
+    const open = [];
+    document.querySelectorAll('details.ds:not([open])').forEach(d => { open.push(d); d.open = true; });
+    window.print();
+    open.forEach(d => d.open = false);
+  });
+
+  // ---------- Scrollspy TOC ----------
+  const links = Array.from(document.querySelectorAll('#toc a'));
+  const sections = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const spy = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#'+e.target.id));
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => spy.observe(s));
+
+  // ---------- Back to top ----------
+  const toTop = document.getElementById('toTop');
+  window.addEventListener('scroll', () => toTop.classList.toggle('show', window.scrollY > 600), { passive:true });
+  toTop.addEventListener('click', () => window.scrollTo({ top:0, behavior:'smooth' }));
+
+  // ---------- Global search (filters cards & table rows by text) ----------
+  const search = document.getElementById('search');
+  const noResults = document.getElementById('noResults');
+  const haystack = Array.from(document.querySelectorAll('main .card, main .tbl-wrap tbody tr, main details.ds, main .hero p.lede, main .hero .badge'));
+  const originals = haystack.map(el => el.innerHTML);
+
+  function clearHighlights() {
+    document.querySelectorAll('main mark').forEach(m => {
+      const p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize();
+    });
+  }
+  function highlight(el, q) {
+    // wrap first match inside this element's direct text only (safe for small nodes)
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let node, done = false;
+    while ((node = walker.nextNode()) && !done) {
+      const idx = node.nodeValue.toLowerCase().indexOf(q);
+      if (idx > -1 && node.parentNode.tagName !== 'MARK') {
+        const range = document.createRange();
+        const before = node.nodeValue.slice(0, idx);
+        const match = node.nodeValue.slice(idx, idx + q.length);
+        const after = node.nodeValue.slice(idx + q.length);
+        const mark = document.createElement('mark'); mark.textContent = match;
+        const frag = document.createDocumentFragment();
+        if (before) frag.appendChild(document.createTextNode(before));
+        frag.appendChild(mark);
+        if (after) frag.appendChild(document.createTextNode(after));
+        range.deleteContents(); range.insertNode(frag);
+        done = true;
+      }
+    }
+  }
+  search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    clearHighlights();
+    haystack.forEach((el, i) => { el.innerHTML = originals[i]; });
+    if (!q) {
+      haystack.forEach(el => el.style.display = '');
+      noResults.style.display = 'none';
+      return;
+    }
+    let hits = 0;
+    haystack.forEach(el => {
+      const match = el.textContent.toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+      if (match) { hits++; highlight(el, q); }
+    });
+    noResults.style.display = hits ? 'none' : 'block';
+  });
+
+  // ---------- Role matrix highlight ----------
+  const matrix = document.getElementById('roleMatrix');
+  if (matrix) {
+    matrix.querySelectorAll('tbody tr td:first-child').forEach(cell => {
+      cell.style.cursor = 'pointer';
+      cell.title = 'Highlight this role';
+      cell.addEventListener('click', () => {
+        const idx = Array.from(cell.parentNode.children).indexOf(cell);
+        matrix.querySelectorAll('tr').forEach(row => {
+          Array.from(row.children).forEach((c, i) => c.classList.remove('role-focus'));
+        });
+        matrix.querySelectorAll('tr').forEach(row => {
+          const c = row.children[idx]; if (c) c.classList.add('role-focus');
+        });
+      });
+    });
+  }
+</script>
+</body>
+</html>
