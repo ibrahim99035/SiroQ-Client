@@ -50,10 +50,22 @@ export function sha256Hex(bytes: Buffer): string {
 /**
  * Storage key. Prefixed by day so listings stay browsable, and prefixed by a
  * UUID so two users uploading `dispense-january.csv` cannot collide.
+ *
+ * The charset filter lets `.` through so extensions survive, but that also lets
+ * a dot run through: `report..v2.csv` would keep its `..` and produce a key that
+ * `assertSafeKey` rejects outright — not as a 400, but as an unhandled throw from
+ * `putObject`, so an ordinary filename like `week..csv` failed the whole upload
+ * with a bare 500. Collapsing dot runs after the filter keeps the key readable
+ * while guaranteeing it survives validation. Slicing can only remove characters,
+ * so it cannot reintroduce a run the collapse already removed.
  */
 export function buildStorageKey(fileName: string, userId: string, now = new Date()): string {
   const day = now.toISOString().slice(0, 10);
-  const safeName = fileName.replace(/[^A-Za-z0-9._-]+/g, "-").slice(-96) || "upload";
+  const safeName =
+    fileName
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/\.{2,}/g, ".")
+      .slice(-96) || "upload";
   return `filings/${day}/${userId}/${randomUUID()}-${safeName}`;
 }
 
