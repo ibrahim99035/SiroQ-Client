@@ -2,30 +2,67 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
+import { ATTACHMENT_EXTENSIONS, contentTypeForName, OCTET_STREAM } from "@/lib/file-types";
+import type { FileKind } from "@/lib/types";
+
 /**
  * Upload policy and intake inspection.
  *
  * The browser is never trusted for any of this: the extension, the declared
  * size, the magic bytes and the row/column counts are all re-derived here from
  * the bytes that actually landed in storage.
+ *
+ * The accepted extensions themselves live in `lib/file-types.ts` so the server,
+ * the storage layer and the browser cannot drift apart.
  */
 
 const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;
-const DEFAULT_EXTENSIONS = ".xlsx,.xls,.csv";
 
+/**
+ * Kept in step with `KIND_BY_EXTENSION` by construction: an extension is either
+ * one of the three analysable ledgers or one of the attachment formats.
+ */
 export const KIND_BY_EXTENSION: Record<string, FileKind> = {
   ".xlsx": "xlsx",
   ".xls": "xls",
   ".csv": "csv",
+  ...Object.fromEntries(ATTACHMENT_EXTENSIONS.map((ext) => [ext, "attachment" as const])),
 };
 
-export type FileKind = "xlsx" | "xls" | "csv";
+const DEFAULT_EXTENSIONS = Object.keys(KIND_BY_EXTENSION).join(",");
 
 export function allowedExtensions(): string[] {
-  return (process.env.UPLOAD_ALLOWED_EXTENSIONS || DEFAULT_EXTENSIONS)
+  const configured = (process.env.UPLOAD_ALLOWED_EXTENSIONS || "").trim();
+  // Falling back to the built-in list rather than to a literal is what keeps
+  // `UPLOAD_ALLOWED_EXTENSIONS` from silently *narrowing* what a deployment
+  // accepts: a value copied from an older `.env` would otherwise quietly keep
+  // rejecting formats the code supports, with no signal that the code had moved
+  // on. A configured value still wins, so an operator can narrow it on purpose.
+  return (configured || DEFAULT_EXTENSIONS)
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter((value) => value.startsWith("."));
+}
+
+/**
+ * The content type to store an upload under.
+ *
+ * Derived from the extension, not from the kind: the kind only says
+ * spreadsheet-or-not, so the previous guess handed every attachment the XLSX
+ * type and served a stored Power BI project back as a workbook. The browser's
+ * declared type is only a fallback, because browsers report nothing useful for
+ * most of these formats -- and a client-supplied type would otherwise decide how
+ * the file is served to whoever downloads it later.
+ */
+export function mimeTypeFor(originalName: string, kind: FileKind, declared?: string): string {
+  if (kind === "attachment") {
+    return contentTypeForName(originalName) !== OCTET_STREAM
+      ? contentTypeForName(originalName)
+      : declared || OCTET_STREAM;
+  }
+  return kind === "csv"
+    ? "text/csv"
+    : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 }
 
 export function maxUploadBytes(): number {
@@ -115,6 +152,28 @@ export function inspectBytes(kind: FileKind, bytes: Buffer): IntakeReport {
     return {
       state: "invalid",
       reason: "The uploaded file is empty.",
+      rowCount: 0,
+      columnCount: 0,
+      detectedColumns: [],
+      sheetNames: [],
+    };
+  }
+
+  // Attachments are stored as evidence and never parsed. This branch must come
+  // before the ledger inspections below: without it an unknown kind falls
+  // through to `inspectCsv`, which decodes a Power BI project as UTF-8 text and
+  // confidently rejects it for having no `NDC code` header -- a verdict about a
+  // manifest the file was never meant to carry, delivered as a hard rejection.
+  //
+  // Reporting `valid` without having opened it is deliberate and is stated in
+  // `reason`, which the ledger shows verbatim. The alternative -- a new
+  // `FileValidationState` -- would widen an enum that three surfaces and the
+  // seed data all switch over, to express a distinction the reason string
+  // already carries honestly.
+  if (kind === "attachment") {
+    return {
+      state: "valid",
+      reason: "Stored as supporting evidence. Contents are not inspected and not analysed.",
       rowCount: 0,
       columnCount: 0,
       detectedColumns: [],

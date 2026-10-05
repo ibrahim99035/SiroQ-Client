@@ -51,6 +51,17 @@ enum FileKind {
   xlsx
   xls
   csv
+
+  /// Anything stored as supporting evidence rather than analysed as a
+  /// dispensing ledger: Power BI (.pbix/.pbit), Tableau (.twb/.twbx/.tds/
+  /// .tdsx/.hyper) and raw data formats (.parquet/.json/.sql/.pdf).
+  ///
+  /// One bucket, not one value per format. The concrete format is already on
+  /// `ApplicationFile.originalName` and `mimeType`, so a per-format enum would
+  /// buy no queryable distinction while adding a branch to every `kind ===`
+  /// test. Keeping the analysable kinds as the three named values is what lets
+  /// the analysis route gate on `kind IN (xlsx, xls, csv)` in one clause.
+  attachment
 }
 
 enum FileValidationState {
@@ -78,6 +89,13 @@ enum UploadState {
 enum ReportStatus {
   draft
   final
+}
+
+/// What happened to a file on a filing. Append-only: see `FileEvent`.
+enum FileEventKind {
+  uploaded
+  replaced
+  deleted
 }
 
 /// Who produced the report. `manual` = attached by a super admin;
@@ -170,6 +188,7 @@ model User {
   submittedFiles ApplicationFile[]    @relation("FileUploader")
   submittedApps  Application[]        @relation("AppSubmitter")
   statusEvents   StatusEvent[]
+  fileEvents     FileEvent[]          @relation("FileEventActor")
   reports        Report[]
   uploads        Upload[]             @relation("UploadOwner")
   analysisRuns   AnalysisRun[]
@@ -259,6 +278,7 @@ model Application {
 
   files        ApplicationFile[]
   events       StatusEvent[]
+  fileEvents   FileEvent[]
   report       Report?
   uploads      Upload[]
   analysisRuns AnalysisRun[]
@@ -358,6 +378,51 @@ model StatusEvent {
 
   @@index([applicationId, changedAt])
   @@map("application_status_events")
+}
+
+/// Append-only record of every change to a filing's evidence: the original
+/// upload, each replacement, and each deletion.
+///
+/// Separate from `StatusEvent` because that table's `to` column is an
+/// `ApplicationStatus` — it can only describe moves through the filing's
+/// lifecycle, and evidence changing is not a status change.
+///
+/// `fileId` is a plain uuid and deliberately **not** a foreign key to
+/// `ApplicationFile`. A deletion has to be recorded, and the record has to
+/// outlive the row it describes: with a real relation, deleting the file would
+/// either cascade the log away or be refused by the constraint, and the one
+/// event that most needs to survive is the one that destroys its subject.
+/// There is no route that deletes a `FileEvent`, by the same reasoning.
+model FileEvent {
+  id            String @id @default(uuid()) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+
+  kind    FileEventKind
+  actorId String        @map("actor_id") @db.Uuid
+
+  /// Null for the file's own row once it is deleted.
+  fileId String? @map("file_id") @db.Uuid
+
+  filename       String
+  sizeBytes      BigInt? @map("size_bytes")
+  checksumSha256 String? @map("checksum_sha256")
+
+  /// The state a replacement overwrote, so a swap can be checked against the
+  /// bytes that were there before rather than taken on trust.
+  previousFilename       String? @map("previous_filename")
+  previousSizeBytes      BigInt? @map("previous_size_bytes")
+  previousChecksumSha256 String? @map("previous_checksum_sha256")
+
+  note String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  actor       User        @relation("FileEventActor", fields: [actorId], references: [id])
+
+  @@index([applicationId, createdAt])
+  @@index([fileId])
+  @@map("application_file_events")
 }
 
 /// The review result attached to a filing.

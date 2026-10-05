@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { apiError, withErrorHandling } from "@/lib/api";
+import { analysisServiceEnabled } from "@/lib/analysis-client";
 import {
   applicationDetailRowSelect,
   serializeApplicationRow,
@@ -12,13 +13,18 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
 import { applicationWhere } from "@/lib/scopes";
+import { canAddFilesToFiling, canEditApplicationFiles } from "@/lib/upload-access";
 
 const patchSchema = z.object({
   title: z.string().min(1, "Enter a filing title.").max(160),
 });
 
 /** The three tenant columns `applicationWhere` filters on. */
-const scopeSelect = { id: true, associationId: true, pharmacyId: true } as const;
+const scopeSelect = {
+  id: true,
+  associationId: true,
+  pharmacyId: true,
+} as const;
 
 /**
  * Loads a filing and proves the caller may see it.
@@ -28,7 +34,10 @@ const scopeSelect = { id: true, associationId: true, pharmacyId: true } as const
  * filing, so an out-of-scope id 404s instead of leaking its existence through a
  * 403. A worker probing ids learns only that the row does not exist.
  */
-async function findScopedApplication(actor: Awaited<ReturnType<typeof requireUser>>, id: string) {
+async function findScopedApplication(
+  actor: Awaited<ReturnType<typeof requireUser>>,
+  id: string,
+) {
   return prisma.application.findFirst({
     where: { AND: [applicationWhere(actor), { id }] },
     select: scopeSelect,
@@ -61,7 +70,17 @@ export const GET = withErrorHandling(
       select: applicationDetailRowSelect,
     });
 
-    return NextResponse.json({ ok: true, ...serializeApplicationRow(row) });
+    return NextResponse.json({
+      ok: true,
+      ...serializeApplicationRow(row, {
+        id: actor.id,
+        canEditFiles: canEditApplicationFiles(actor, visible),
+        canAddFiles: canAddFilesToFiling(actor, visible),
+      }),
+      // So the detail page can hide the analysis action entirely when the
+      // integration is off, instead of rendering a button that fails on click.
+      analysisServiceAvailable: analysisServiceEnabled(),
+    });
   },
 );
 
@@ -93,7 +112,11 @@ export const PATCH = withErrorHandling(
     const body = await request.json().catch(() => null);
     const parsed = patchSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("invalid", parsed.error.issues[0]?.message ?? "Invalid request.", 400);
+      return apiError(
+        "invalid",
+        parsed.error.issues[0]?.message ?? "Invalid request.",
+        400,
+      );
     }
 
     // Strict: an unknown key is a client bug or an attempt to set `status` or
@@ -136,6 +159,13 @@ export const PATCH = withErrorHandling(
       select: applicationDetailRowSelect,
     });
 
-    return NextResponse.json({ ok: true, ...serializeApplicationRow(row) });
+    return NextResponse.json({
+      ok: true,
+      ...serializeApplicationRow(row, {
+        id: actor.id,
+        canEditFiles: canEditApplicationFiles(actor, target),
+        canAddFiles: canAddFilesToFiling(actor, target),
+      }),
+    });
   },
 );

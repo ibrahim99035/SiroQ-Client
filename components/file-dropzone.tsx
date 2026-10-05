@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { SUPPORTED_EXTENSIONS, validateUpload, type UploadCandidate } from "@/lib/files";
+import { ATTACHMENT_EXTENSIONS } from "@/lib/file-types";
 import { cn, formatBytes } from "@/lib/utils";
 
 interface StagedFile {
@@ -17,6 +18,11 @@ interface StagedFile {
   candidate: UploadCandidate;
   progress: number;
 }
+
+/** Ledger formats vs supporting evidence, so the hint can name both. */
+const LEDGER_EXTENSIONS = SUPPORTED_EXTENSIONS.filter(
+  (ext) => !ATTACHMENT_EXTENSIONS.includes(ext as (typeof ATTACHMENT_EXTENSIONS)[number]),
+);
 
 /**
  * Multi-file dropzone. Extension gate + simulated content validation happen
@@ -91,7 +97,7 @@ export function FileDropzone({
       <div
         role="button"
         tabIndex={0}
-        aria-label="Upload filing files — .xlsx or .csv only"
+        aria-label={`Upload filing files — ${LEDGER_EXTENSIONS.join(", ")} for the dispensing ledger, plus supporting evidence`}
         onClick={openPicker}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -116,16 +122,21 @@ export function FileDropzone({
         )}
       >
         <UploadCloud className="h-6 w-6 text-accent" aria-hidden="true" />
-        <p className="text-sm font-medium text-ink">Drop dispensing files here, or click to browse</p>
+        <p className="text-sm font-medium text-ink">
+          Drop dispensing files or supporting evidence here, or click to browse
+        </p>
         <p className="font-mono text-[11px] text-muted">
-          Accepted: {SUPPORTED_EXTENSIONS.map((e) => e).join(" · ")}
+          Ledger: {LEDGER_EXTENSIONS.join(" · ")}
+        </p>
+        <p className="font-mono text-[11px] text-muted">
+          Also as evidence: {ATTACHMENT_EXTENSIONS.join(" · ")}
         </p>
       </div>
       <input
         ref={inputRef}
         type="file"
         multiple
-        accept=".xlsx,.csv"
+        accept={SUPPORTED_EXTENSIONS.join(",")}
         className="sr-only"
         aria-hidden="true"
         onChange={(e) => {

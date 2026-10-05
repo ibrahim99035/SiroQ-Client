@@ -6,8 +6,9 @@ export type Role =
 
 export type UserStatus = "active" | "invited" | "disabled";
 export type EntityStatus = "active" | "suspended";
-export type ApplicationStatus = "pending" | "in_review" | "reported" | "rejected";
-export type FileKind = "xlsx" | "xls" | "csv";
+export type ApplicationStatus =
+  "pending" | "in_review" | "reported" | "rejected";
+export type FileKind = "xlsx" | "xls" | "csv" | "attachment";
 export type FileValidationState = "valid" | "warning" | "invalid";
 export type ReportStatus = "draft" | "final";
 
@@ -67,6 +68,44 @@ export interface ApplicationFile {
   validationState: FileValidationState;
   validationReason: string;
   uploadedAt: string;
+  /**
+   * Whether the viewer who loaded this filing may replace or remove the file:
+   * they uploaded it, or they hold the super-admin grant.
+   *
+   * Optional because the list projection never fetched it — absence means "not
+   * determined", not "denied", so callers should hide the controls rather than
+   * show them disabled. The route re-checks the same rule regardless.
+   */
+  editable?: boolean;
+}
+
+export type FileEventKind = "uploaded" | "replaced" | "deleted";
+
+/**
+ * One entry in a filing's chain of custody for evidence changes.
+ *
+ * Append-only: these rows are written in the same transaction as the change they
+ * describe and have no delete path, which is the point — after a file is removed,
+ * this is the only surviving record of what it was.
+ *
+ * `fileId` is a bare id, not a reference to a row that is expected to still
+ * exist: a `deleted` event points at an id that is deliberately gone.
+ */
+export interface FileEvent {
+  id: string;
+  kind: FileEventKind;
+  fileId: string | null;
+  actorId: string;
+  actorName?: string;
+  actorRole?: Role;
+  filename: string;
+  sizeBytes: number | null;
+  checksumSha256: string | null;
+  previousFilename?: string;
+  previousSizeBytes?: number;
+  previousChecksumSha256?: string;
+  createdAt: string;
+  note?: string;
 }
 
 export interface StatusEvent {
@@ -95,7 +134,8 @@ export interface StatusEvent {
  * column accepted them.
  */
 export type ReportValue = string | number | boolean | null;
-export type ReportNode = ReportValue | ReportNode[] | { [key: string]: ReportNode };
+export type ReportNode =
+  ReportValue | ReportNode[] | { [key: string]: ReportNode };
 export type ReportResultData = { [key: string]: ReportNode };
 
 /**
@@ -164,15 +204,21 @@ export interface NotesNode {
  */
 type Tagged<T> = { [key: string]: ReportNode } & T;
 
-export function isChartNode(node: ReportNode | undefined): node is Tagged<ChartNode> {
+export function isChartNode(
+  node: ReportNode | undefined,
+): node is Tagged<ChartNode> {
   return isPlainObject(node) && typeof node.$chart === "string";
 }
 
-export function isForecastNode(node: ReportNode | undefined): node is Tagged<ForecastNode> {
+export function isForecastNode(
+  node: ReportNode | undefined,
+): node is Tagged<ForecastNode> {
   return isPlainObject(node) && node.$forecast === true;
 }
 
-export function isNotesNode(node: ReportNode | undefined): node is Tagged<NotesNode> {
+export function isNotesNode(
+  node: ReportNode | undefined,
+): node is Tagged<NotesNode> {
   return isPlainObject(node) && Array.isArray(node.$notes);
 }
 
@@ -204,6 +250,24 @@ export interface Report {
   rawData?: string;
 }
 
+/**
+ * Lifecycle of one analysis run, as tracked here.
+ *
+ * The service owns the same four states; this app records them so the filing can
+ * show progress and survive a reload. `queued` and `running` are the only
+ * non-terminal states.
+ */
+export type AnalysisRunStatus = "queued" | "running" | "succeeded" | "failed";
+
+/** The most recent analysis run for a filing, as the detail page receives it. */
+export interface AnalysisRunSummary {
+  runId: string;
+  status: AnalysisRunStatus;
+  errorMessage?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
 export interface Application {
   id: string;
   /**
@@ -225,6 +289,32 @@ export interface Application {
   updatedAt: string;
   history: StatusEvent[];
   reportId?: string;
+  /**
+   * Most recent analysis run, or `null`/`undefined` when the filing has never
+   * been analysed.
+   *
+   * Present on the detail projection only. It exists so a page opened after an
+   * automatic trigger can pick the run back up: without it, a filing whose
+   * analysis started on submission would look un-analysed to anyone arriving
+   * later, and the only way to find out would be to ask the analysis service.
+   */
+  latestRun?: AnalysisRunSummary | null;
+  /**
+   * Custody log for changes to this filing's files, newest first.
+   *
+   * Detail projection only, for the same reason as `latestRun`: no other screen
+   * renders it, so the list does not pay to fetch it.
+   */
+  fileEvents?: FileEvent[];
+  /**
+   * Whether this viewer may attach another file to this filing.
+   *
+   * Server-derived, like the per-file `editable`, because the rule is not
+   * guessable in the browser: it is the submitter, a prior uploader of this
+   * filing, or a super admin. Undefined on projections that did not resolve a
+   * viewer, which is "cannot tell" rather than "denied".
+   */
+  canAddFiles?: boolean;
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

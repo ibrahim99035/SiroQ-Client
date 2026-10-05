@@ -31,6 +31,8 @@ export type PermissionAction =
   | "viewPharmacyData"
   | "createApplication"
   | "attachReport"
+  | "editReport"
+  | "editApplicationFiles"
   | "updateApplicationStatus"
   | "manageUsers"
   | "manageAssociations"
@@ -77,7 +79,9 @@ export function can(
     case "pharmacy_association_admin":
       switch (action) {
         case "viewAssociationData":
-          return resource ? resource.associationId === user.associationId : true;
+          return resource
+            ? resource.associationId === user.associationId
+            : true;
         case "viewPharmacyData":
           if (!resource) return true;
           return (
@@ -104,13 +108,9 @@ export function can(
     case "pharmacy_worker":
       switch (action) {
         case "viewPharmacyData":
-          return resource
-            ? resource.pharmacyId === user.pharmacyId
-            : true;
+          return resource ? resource.pharmacyId === user.pharmacyId : true;
         case "createApplication":
-          return resource
-            ? resource.pharmacyId === user.pharmacyId
-            : true;
+          return resource ? resource.pharmacyId === user.pharmacyId : true;
         default:
           return false;
       }
@@ -163,6 +163,10 @@ function actionDescribe(action: PermissionAction): string {
       return "create applications";
     case "attachReport":
       return "attach reports";
+    case "editReport":
+      return "edit reports";
+    case "editApplicationFiles":
+      return "replace or delete filing files";
     case "updateApplicationStatus":
       return "change application status";
     case "manageUsers":

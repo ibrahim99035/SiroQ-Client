@@ -7,7 +7,7 @@ import { apiError, withErrorHandling } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { deleteObject, getObject, putObject, storageDriver } from "@/lib/storage";
-import { canAttachToApplication } from "@/lib/upload-access";
+import { canAddFilesToFiling } from "@/lib/upload-access";
 import { inspectBytes, maxUploadBytes, sha256Hex } from "@/lib/uploads";
 
 const completeSchema = z.object({
@@ -57,15 +57,31 @@ export const POST = withErrorHandling(
     // trusting the check done at creation time. Owning the slot proves nothing
     // about the right to write into another tenant's filing.
     const applicationId = parsed.data.applicationId ?? upload.applicationId;
+    // Hoisted out of the `if` below: the custody event written inside the
+    // transaction needs the same filing this block resolved, and re-querying it
+    // there would be a second round trip for a value already in hand.
+    let targetFiling: {
+      id: string;
+      associationId: string;
+      pharmacyId: string;
+    } | null = null;
     if (applicationId) {
-      const target = await prisma.application.findUnique({
+      targetFiling = await prisma.application.findUnique({
         where: { id: applicationId },
-        select: { id: true, associationId: true, pharmacyId: true },
+        select: {
+          id: true,
+          associationId: true,
+          pharmacyId: true,
+        },
       });
-      if (!target) {
+      if (!targetFiling) {
         return apiError("not_found", "That filing does not exist.", 404);
       }
-      if (!canAttachToApplication(user, target)) {
+      // The same tenant-scoped write as attaching during filing creation, and
+      // deliberately the same rule: `canAddFilesToFiling` delegates rather than
+      // narrowing it. Note that no `status` is read — adding to a reported
+      // filing is allowed, and the re-analysis is what keeps its analysis true.
+      if (!canAddFilesToFiling(user, targetFiling)) {
         return apiError("forbidden", "You cannot add files to that filing.", 403);
       }
     }
@@ -150,6 +166,30 @@ export const POST = withErrorHandling(
             select: { id: true },
           })
         : null;
+
+      // The first entry in this file's custody history. The `uploaded` kind was
+      // modelled alongside `replaced` and `deleted` but nothing ever wrote it,
+      // which left every log starting at a file's *first* replacement and made a
+      // file nobody had touched look like it had appeared without provenance.
+      //
+      // Recorded even when intake rejected the contents: the bytes were still
+      // stored and are still on the filing, so the fact of their arrival is part
+      // of the chain of custody. `reason` carries the intake verdict, and an
+      // `invalid` verdict is visible on the ledger row itself.
+      if (attached) {
+        await tx.fileEvent.create({
+          data: {
+            applicationId: targetFiling!.id,
+            fileId: attached.id,
+            kind: "uploaded",
+            actorId: user.id,
+            filename: upload.originalName,
+            sizeBytes: BigInt(stored.sizeBytes),
+            checksumSha256: checksum,
+            note: report.reason,
+          },
+        });
+      }
 
       return [done, attached] as const;
     });

@@ -26,6 +26,10 @@ import TextAlign from "@tiptap/extension-text-align";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { Highlight } from "@tiptap/extension-highlight";
+// The same node the editor registers: a quoted PDF has to render for a reader
+// who cannot edit, and the card decides its own controls from `editor.isEditable`
+// rather than the surface being asked to render it.
+import { PdfBlock } from "@/components/pdf-node";
 
 interface ReportRichTextProps {
   content: unknown;
@@ -60,6 +64,7 @@ export function ReportRichText({ content, title }: ReportRichTextProps) {
       Color,
       TextStyle,
       Highlight,
+      PdfBlock,
     ],
     content: content as never,
     editable: false,

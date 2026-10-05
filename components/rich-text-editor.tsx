@@ -29,6 +29,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { Highlight } from "@tiptap/extension-highlight";
 import { CharacterCount } from "@tiptap/extension-character-count";
 import { Placeholder } from "@tiptap/extension-placeholder";
+import { UndoRedo } from "@tiptap/extensions";
 import {
   
   
@@ -66,6 +67,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Toggle } from "@/components/ui/toggle";
+import { PdfBlock, PdfPickerButton, PDF_NODE_NAME, type PdfAttachment } from "@/components/pdf-node";
 
 interface RichTextEditorProps {
   value: unknown;
@@ -75,6 +77,8 @@ interface RichTextEditorProps {
   editable?: boolean;
   minHeight?: string;
   placeholder?: string;
+  /** PDFs on the filing, offered by the toolbar. Absent disables quoting. */
+  pdfs?: PdfAttachment[];
 }
 
 export function RichTextEditor({
@@ -85,6 +89,7 @@ export function RichTextEditor({
   editable = true,
   minHeight = "200px",
   placeholder = "Start writing...",
+  pdfs = [],
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -121,6 +126,15 @@ export function RichTextEditor({
       Color,
       TextStyle,
       Highlight.configure({ multicolor: true }),
+      // Registered in both this editor and the read-only renderer, so a quoted
+      // document renders the same whether or not the reader can edit the report.
+      PdfBlock,
+      // The extension list is assembled by hand rather than through StarterKit,
+      // so StarterKit's bundled history never gets registered — which left
+      // `editor.can().undo()` reading a command that does not exist and threw on
+      // every render, taking the whole page down through the error boundary.
+      // The toolbar's undo and redo buttons are inert without this.
+      UndoRedo,
       CharacterCount,
       Placeholder.configure({ placeholder }),
     ],
@@ -159,6 +173,24 @@ export function RichTextEditor({
   const addTable = React.useCallback(() => {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
   }, [editor]);
+
+  const addPdf = React.useCallback(
+    (pdf: PdfAttachment) => {
+      // The node records the name and the authorized path it was quoted under so
+      // the card survives a reload without consulting the filing again, but the
+      // bytes are never touched here — quoting a document must not pull a PDF
+      // into a report document that has a 4 MB ceiling.
+      editor
+        ?.chain()
+        .focus()
+        .insertContent({
+          type: PDF_NODE_NAME,
+          attrs: { fileId: pdf.id, filename: pdf.filename, url: pdf.downloadUrl },
+        })
+        .run();
+    },
+    [editor],
+  );
 
   if (!editor) return null;
 
@@ -256,6 +288,7 @@ export function RichTextEditor({
         <Button variant="ghost"  className="h-7 w-7 p-0" onClick={addTable} title="Add table">
           <TableIcon className="h-3.5 w-3.5" />
         </Button>
+        {editable ? <PdfPickerButton pdfs={pdfs} onPick={addPdf} /> : null}
         <Button variant="ghost"  className="h-7 w-7 p-0" onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal rule">
           <Minus className="h-3.5 w-3.5" />
         </Button>
@@ -269,7 +302,7 @@ export function RichTextEditor({
           <Redo2 className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <EditorContent editor={editor} style={{ minHeight }} className="prose prose-sm max-w-none [&_.ProseMirror]:min-h-[inherit] [&_.ProseMirror]:p-2 [&_.ProseMirror]:text-[12px] [&_.ProseMirror]:leading-relaxed [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:my-1.5 [&_.ProseMirror_h1]:mt-2 [&_.ProseMirror_h1]:mb-1.5 [&_.ProseMirror_h2]:mt-2 [&_.ProseMirror_h2]:mb-1.5 [&_.ProseMirror_h3]:mt-1.5 [&_.ProseMirror_h3]:mb-1 [&_.ProseMirror_ul]:my-1.5 [&_.ProseMirror_ol]:my-1.5 [&_.ProseMirror_blockquote]:my-2 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_hr]:my-2 [&_.ProseMirror_pre]:my-2 [&_.ProseMirror_table]:my-2" />
+      <EditorContent editor={editor} style={{ minHeight }} className="prose prose-sm max-w-none [&_.ProseMirror]:min-h-[inherit] [&_.ProseMirror]:p-2 [&_.ProseMirror]:text-[12px] [&_.ProseMirror]:leading-relaxed [&_.ProseMirror]:text-ink [&_.ProseMirror]:outline-none [&_.ProseMirror_p]:my-1.5 [&_.ProseMirror_h1]:mt-2 [&_.ProseMirror_h1]:mb-1.5 [&_.ProseMirror_h2]:mt-2 [&_.ProseMirror_h2]:mb-1.5 [&_.ProseMirror_h3]:mt-1.5 [&_.ProseMirror_h3]:mb-1 [&_.ProseMirror_ul]:my-1.5 [&_.ProseMirror_ol]:my-1.5 [&_.ProseMirror_blockquote]:my-2 [&_.ProseMirror_blockquote]:border-l-2 [&_.ProseMirror_blockquote]:pl-3 [&_.ProseMirror_hr]:my-2 [&_.ProseMirror_pre]:my-2 [&_.ProseMirror_table]:my-2" />
       <div className="flex justify-end px-1">
         <span className="text-[10px] text-muted-foreground">
           {editor.storage.characterCount.characters()} characters

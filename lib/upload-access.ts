@@ -1,7 +1,11 @@
 import "server-only";
 
 import { prisma } from "@/lib/db";
-import { can, type PermissionResource, type PermissionUser } from "@/lib/permissions";
+import {
+  can,
+  type PermissionResource,
+  type PermissionUser,
+} from "@/lib/permissions";
 
 /**
  * Tenant scoping for uploaded files.
@@ -32,7 +36,9 @@ function toResource(application: ApplicationScope): PermissionResource {
   };
 }
 
-export function applicationScope(application: ApplicationScope): PermissionResource {
+export function applicationScope(
+  application: ApplicationScope,
+): PermissionResource {
   return toResource(application);
 }
 
@@ -44,9 +50,9 @@ export function applicationScope(application: ApplicationScope): PermissionResou
  * are not part of any tenant yet, so callers must fall back to owner-only
  * access for them.
  */
-export async function resolveUploadApplication(
-  upload: { applicationId: string | null },
-): Promise<ApplicationScope | null> {
+export async function resolveUploadApplication(upload: {
+  applicationId: string | null;
+}): Promise<ApplicationScope | null> {
   if (!upload.applicationId) return null;
   return prisma.application.findUnique({
     where: { id: upload.applicationId },
@@ -100,4 +106,70 @@ export function canAttachToApplication(
   if (user.status !== "active") return false;
   if (can(user, "viewAllData")) return true;
   return can(user, "createApplication", toResource(application));
+}
+
+/**
+ * May this user replace or delete one specific file on a filing?
+ *
+ * Two grants, either sufficient:
+ *
+ *  - they uploaded it, so they can correct their own submission; and
+ *  - `editApplicationFiles`, which is super-admin only. Reviewers and tenant
+ *    admins get neither, which is deliberate: swapping the bytes under a filing
+ *    changes the evidence a review was performed on, so it is not a tenant-scoped
+ *    write like attaching a file is. Attaching is modelled as
+ *    `createApplication` in `canAttachToApplication` above, and the two
+ *    deliberately disagree.
+ *
+ * Ownership is checked before the role so that a worker who uploaded a file is
+ * not silently relying on `editApplicationFiles`, which they do not hold. The
+ * uploader of a *different* file on the same filing gets nothing here: the test
+ * is against this row's `uploadedById`, not the filing's submitter.
+ */
+export function canEditApplicationFiles(
+  user: PermissionUser,
+  application: ApplicationScope,
+): boolean {
+  if (user.status !== "active") return false;
+  return can(user, "editApplicationFiles", toResource(application));
+}
+
+export function canEditApplicationFile(
+  user: PermissionUser,
+  file: { uploadedById: string },
+  application: ApplicationScope,
+): boolean {
+  if (user.status !== "active") return false;
+  if (file.uploadedById === user.id) return true;
+  return canEditApplicationFiles(user, application);
+}
+
+/**
+ * May this user add another file to a filing that already exists?
+ *
+ * This is `canAttachToApplication`, unchanged, and deliberately so. Adding a
+ * file to a filing is the same act as attaching one while filing it: a
+ * pharmacy-side write inside the caller's own tenant. An earlier draft of this
+ * work narrowed it to "super admin, or the filing's submitter", on the reasoning
+ * that topping up somebody else's filing is a stronger claim than filing your
+ * own. That reasoning was sound but the restriction was not asked for, and it
+ * took away a capability the product has always had — association admins upload
+ * on behalf of their pharmacies, and `verify-authz` asserts exactly that.
+ * Narrowing an existing permission is a product decision, not a refactoring
+ * detail, so it does not belong in a change whose subject is "you may add more
+ * than one file".
+ *
+ * What is new is only the absence of a status gate: see
+ * `canAttachToApplication` above for why that call is tenant-scoped, and note
+ * that no `Application.status` is consulted anywhere on this path. Evidence can
+ * be added at any point in the lifecycle, including after a report was attached.
+ * The re-analysis that adding a file triggers is what keeps an already-reported
+ * filing's analysis current — a lock would only have refused the correction and
+ * left the analysis describing files that are no longer there.
+ */
+export function canAddFilesToFiling(
+  user: PermissionUser,
+  application: ApplicationScope,
+): boolean {
+  return canAttachToApplication(user, application);
 }

@@ -1,6 +1,7 @@
+import { ATTACHMENT_EXTENSIONS, SUPPORTED_EXTENSIONS } from "./file-types";
 import type { FileKind, FileValidationState } from "./types";
 
-export const SUPPORTED_EXTENSIONS = [".xlsx", ".xls", ".csv"] as const;
+export { SUPPORTED_EXTENSIONS };
 
 export interface UploadCandidate {
   fileName: string;
@@ -44,12 +45,19 @@ function extensionOf(name: string): string {
 
 /**
  * Extension gate — client-side only, before any simulated content pass.
+ *
+ * Mirrors the server's `classify`, so the browser never stages a file the server
+ * will reject. It is a UX affordance, not the gate: `POST /api/uploads`
+ * re-derives the kind from the filename regardless.
  */
 export function classifyFileKind(fileName: string): FileKind | null {
   const ext = extensionOf(fileName);
   if (ext === ".xlsx") return "xlsx";
   if (ext === ".xls") return "xls";
   if (ext === ".csv") return "csv";
+  if (ATTACHMENT_EXTENSIONS.includes(ext as (typeof ATTACHMENT_EXTENSIONS)[number])) {
+    return "attachment";
+  }
   return null;
 }
 
@@ -78,7 +86,7 @@ const COL_COMPOUND = [
 ];
 
 const REASON_BAD_EXT =
-  "Only .xlsx, .xls or .csv files are accepted. The file was held back and not staged for review.";
+  "That file type is not accepted. Ledgers must be .xlsx, .xls or .csv; supporting evidence may also be .pbix, .pbit, .twb, .twbx, .tds, .tdsx, .hyper, .parquet, .json, .sql or .pdf. The file was held back and not staged.";
 const REASON_BAD_DATE =
   "Dispense date out of range at row {N}; value falls outside the reporting window. Correct the source and re-stage.";
 const REASON_MISSING_COL =
@@ -93,6 +101,22 @@ const REASON_DATE_FORMAT =
  * is stable across re-stages.
  */
 export function simulateFileValidation(fileName: string, sizeBytes: number): Omit<UploadCandidate, "kind"> {
+  // Attachments are never content-validated, so return before anything reads the
+  // filename. Without this a Power BI export named `backdate-2023-analysis.pbix`
+  // would be reported as invalid for holding dispensing records out of range --
+  // a verdict about a manifest this file was never claiming to satisfy.
+  if (classifyFileKind(fileName) === "attachment") {
+    return {
+      fileName,
+      sizeBytes,
+      state: "valid",
+      reason: "Queued as supporting evidence. Contents are not checked against the filing manifest.",
+      rowCount: 0,
+      columnCount: 0,
+      detectedColumns: [],
+    };
+  }
+
   const h = hashStr(fileName.toLowerCase());
   const baseRows = Math.max(8, Math.round(sizeBytes / 720));
   const rows = baseRows + (h % 17);

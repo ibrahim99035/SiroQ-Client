@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { ServiceStatusCard } from "@/components/service-status-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 /* ---------------------------------------------------------------------- */
@@ -193,19 +194,24 @@ function AccountMenu() {
 /* ---------------------------------------------------------------------- */
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  const user = useCurrentUser();
-  const pathname = usePathname();
-  const items = useNavItems(user);
-  return (
-    <div className="flex flex-col gap-0.5">
-      {user ? (
-        items.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
-        ))
-      ) : null}
-    </div>
-  );
-}
+    const user = useCurrentUser();
+    const pathname = usePathname();
+    const items = useNavItems(user);
+    return (
+      <div className="flex flex-col gap-0.5">
+        {user ? (
+          items.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
+          ))
+        ) : null}
+        {/* Only for signed-in staff: the card reports on a service reached with the
+            deployment's own key, so showing it to a signed-out sidebar would mean
+            a control that can answer nothing useful. Starting and tracking a run
+            is not here — that is `analysis-panel`'s job, on the filing itself. */}
+        {user ? <ServiceStatusCard /> : null}
+      </div>
+    );
+  }
 
 function topbarLabel(pathname: string): string {
   if (pathname === "/dashboard") return "Dashboard";
@@ -223,7 +229,10 @@ function topbarLabel(pathname: string): string {
 function Topbar({ onMenu }: { onMenu: () => void }) {
   const pathname = usePathname();
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-hairline/80 bg-paper/70 px-4 shadow-[0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl sm:px-6 lg:px-8">
+    <header
+      data-app-chrome="header"
+      className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-hairline/80 bg-paper/70 px-4 shadow-[0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl sm:px-6 lg:px-8"
+    >
       <button
         type="button"
         onClick={onMenu}
@@ -327,7 +336,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-paper text-ink">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-hairline bg-paper-raised md:flex">
+      <aside
+        data-app-chrome="nav"
+        className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-hairline bg-paper-raised md:flex"
+      >
         <div className="flex h-14 items-center border-b border-hairline px-4">
           <Brand />
         </div>
@@ -374,7 +386,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="md:pl-60">
         <Topbar onMenu={() => setDrawerOpen(true)} />
-        <main className="mx-auto max-w-6xl px-4 pb-16 pt-5 sm:px-6 lg:px-8">{children}</main>
+        <main
+          data-app-chrome="main"
+          className="mx-auto max-w-6xl px-4 pb-16 pt-5 sm:px-6 lg:px-8"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

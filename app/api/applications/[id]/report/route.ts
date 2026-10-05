@@ -4,12 +4,20 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { apiError, withErrorHandling } from "@/lib/api";
-import { applicationDetailRowSelect, serializeApplicationRow } from "@/lib/application-rows";
+import {
+  applicationDetailRowSelect,
+  serializeApplicationRow,
+} from "@/lib/application-rows";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { absoluteUrl, sendFilingStatusChanged, sendFilingStatusChangedToAll } from "@/lib/mail";
+import {
+  absoluteUrl,
+  sendFilingStatusChanged,
+  sendFilingStatusChangedToAll,
+} from "@/lib/mail";
 import { requirePermission } from "@/lib/permissions";
 import { applicationWhere } from "@/lib/scopes";
+import { canEditApplicationFiles } from "@/lib/upload-access";
 
 /**
  * 4 MB of UTF-8 text. Matches `UPLOAD_MAX_BYTES` so a report cannot become a
@@ -81,9 +89,15 @@ export const POST = withErrorHandling(
       return apiError("not_found", "That filing does not exist.", 404);
     }
 
-    const parsed = reportSchema.safeParse(await request.json().catch(() => null));
+    const parsed = reportSchema.safeParse(
+      await request.json().catch(() => null),
+    );
     if (!parsed.success) {
-      return apiError("invalid", parsed.error.issues[0]?.message ?? "Invalid request.", 400);
+      return apiError(
+        "invalid",
+        parsed.error.issues[0]?.message ?? "Invalid request.",
+        400,
+      );
     }
 
     // Measured on the encoded form, not the string length: a document full of
@@ -135,7 +149,11 @@ export const POST = withErrorHandling(
         pharmacyAssociationId: target.associationId,
       });
     } catch {
-      return apiError("forbidden", "You cannot attach a report to this filing.", 403);
+      return apiError(
+        "forbidden",
+        "You cannot attach a report to this filing.",
+        403,
+      );
     }
 
     // `Report.applicationId` is unique, so a second attach would otherwise
@@ -209,7 +227,10 @@ export const POST = withErrorHandling(
     };
 
     const submitter = await prisma.application
-      .findUnique({ where: { id }, select: { submittedBy: { select: { email: true, name: true } } } })
+      .findUnique({
+        where: { id },
+        select: { submittedBy: { select: { email: true, name: true } } },
+      })
       .then((found) => found?.submittedBy)
       .catch(() => null);
 
@@ -243,13 +264,23 @@ export const POST = withErrorHandling(
         },
         select: { id: true, email: true, name: true },
       })
-      .then((admins) => admins.filter((admin) => admin.id !== target.submittedById))
+      .then((admins) =>
+        admins.filter((admin) => admin.id !== target.submittedById),
+      )
       .catch(() => []);
 
     if (associationAdmins.length > 0) {
-      void sendFilingStatusChangedToAll(associationAdmins, content).catch(() => undefined);
+      void sendFilingStatusChangedToAll(associationAdmins, content).catch(
+        () => undefined,
+      );
     }
 
-    return NextResponse.json({ ok: true, ...serializeApplicationRow(row) });
+    return NextResponse.json({
+      ok: true,
+      ...serializeApplicationRow(row, {
+        id: actor.id,
+        canEditFiles: canEditApplicationFiles(actor, target),
+      }),
+    });
   },
 );

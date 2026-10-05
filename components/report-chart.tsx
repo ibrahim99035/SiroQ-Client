@@ -1,5 +1,7 @@
 "use client";
 
+import { parseServiceNumber as toNumber } from "@/lib/utils";
+
 /**
  * Report charts, forecasting summaries and notes.
  *
@@ -14,16 +16,6 @@
  * reader sees. A bar's label and its printed value can therefore never disagree.
  */
 
-/** Strip grouping separators and any currency symbol to get a drawable number. */
-function toNumber(text: string | number | undefined | null): number | null {
-  if (typeof text === "number") return Number.isFinite(text) ? text : null;
-  if (typeof text !== "string") return null;
-  const cleaned = text.replace(/[^0-9.\-]/g, "");
-  if (cleaned === "" || cleaned === "-" || cleaned === ".") return null;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 /** Shorten a number to fit an axis: 12.3k, 1.2M. Keeps the axis from dominating. */
 function compact(value: number): string {
   const abs = Math.abs(value);
@@ -34,11 +26,37 @@ function compact(value: number): string {
 }
 
 /**
+ * Categorical fills, in the order a reader meets them.
+ *
+ * Every entry is a theme token rather than a literal, so the palette follows the
+ * app into dark mode and into the print stylesheet without a second definition.
+ * `status-*` covers the tail: a category chart with more than six series is
+ * already at the point where the reader is reading labels, not colours.
+ */
+const CATEGORICAL = [
+  "var(--accent)",
+  "var(--accent-strong)",
+  "var(--accent-warm)",
+  "var(--status-reported)",
+  "var(--status-in-review)",
+  "var(--status-pending)",
+  "var(--accent-muted)",
+  "var(--muted-text)",
+] as const;
+
+function categorical(index: number): string {
+  return CATEGORICAL[index % CATEGORICAL.length]!;
+}
+
+/**
  * Horizontal bars.
  *
- * Bars are sorted largest-first because that is the order a reader scans them in
- * and the service's `bars()` already normalises widths against the maximum, so
- * the order is a display choice rather than a data one.
+ * Sorted largest-first here rather than trusting arrival order. The service's
+ * `bars()` truncates to a maximum and computes `pct` against it, but it never
+ * sorts -- it preserves whatever order the engine enumerated categories in, which
+ * for a classification result is effectively arbitrary. The panel previously
+ * claimed the service did the ordering; it did not, and the chart drew eight
+ * categories in whatever order they happened to be produced.
  */
 export function ReportBarChart({
   bars,
@@ -54,15 +72,20 @@ export function ReportBarChart({
   // `Share` is a percentage of the largest bar (that is what the service's
   // `bars()` computes). Fall back to the numeric value when it is absent so a
   // hand-built chart still draws.
-  const shares = bars.map((bar) => {
+  const sized = bars.map((bar) => {
     const pct = toNumber(bar.Share);
     if (pct !== null) return Math.max(0, Math.min(100, pct));
     const value = toNumber(bar.Value);
-    const values = bars.map((b) => toNumber(b.Value) ?? 0);
-    const max = Math.max(...values, 1);
-    return value === null ? 0 : Math.max(0, Math.min(100, (value / max) * 100));
+    return value === null ? 0 : value;
   });
-  const peak = Math.max(...shares, 1);
+  const peak = Math.max(...sized, 1);
+
+  // Sorting on the measured size rather than on `Share` keeps the order correct
+  // for the fallback path too, where every entry shares the same `Share`.
+  const ordered = bars
+    .map((bar, index) => ({ bar, size: sized[index]! }))
+    .sort((a, b) => b.size - a.size)
+    .map(({ bar, size }) => ({ bar, width: (size / peak) * 100 }));
 
   return (
     <figure className="m-0 px-5 pb-3 pt-1">
@@ -73,21 +96,22 @@ export function ReportBarChart({
         </figcaption>
       ) : null}
       <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {bars.map((bar, index) => (
-          <li key={bar.Label} className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-2">
-            <span
-              className="truncate text-[12px] text-muted"
-              title={`${bar.Label}: ${bar.Value}`}
-            >
+        {ordered.map(({ bar, width }, index) => (
+          <li
+            key={bar.Label}
+            className="grid grid-cols-[clamp(5.5rem,32%,13rem)_minmax(0,1fr)_auto] items-center gap-2.5"
+          >
+            <span className="truncate text-[12px] text-muted" title={`${bar.Label}: ${bar.Value}`}>
               {bar.Label}
             </span>
             {/* The track gives the column something to sit against so a very
                 small bar still reads as a measured quantity rather than a
-                rendering failure. */}
+                rendering failure. The fill is a pill rather than a square
+                rectangle to match the service's bar charts. */}
             <span className="flex h-2.5 items-center">
               <span
-                className="block h-2.5 rounded-[2px] bg-accent"
-                style={{ width: `${Math.max(2, (shares[index]! / peak) * 100)}%` }}
+                className="block h-2.5 min-w-[3px] rounded-full"
+                style={{ width: `${Math.max(1.5, width)}%`, background: categorical(index) }}
               />
             </span>
             <span className="font-mono text-[11px] tabular-nums text-ink">{bar.Value}</span>
@@ -242,6 +266,12 @@ export function ReportForecastChart({
       <div className="relative">
         <svg
           viewBox={`0 0 ${width} ${height}`}
+          // Deliberate, not an oversight: the chart is pinned to the viewBox
+          // height and stretched to the panel width, so the geometry is authored
+          // in a fixed 640x132 space and scaled horizontally. Everything drawn
+          // here is a polyline, a polygon or a vertical tick, so horizontal
+          // stretching does not distort it. A fill-based marker would deform,
+          // which is why the hand-over is a stroke.
           preserveAspectRatio="none"
           className="h-[132px] w-full"
           role="img"
@@ -271,13 +301,24 @@ export function ReportForecastChart({
             />
           ) : null}
           {/* Mark the hand-over explicitly. A dashed line that starts one step
-              after the solid one ends reads as a gap in the data. */}
+              after the solid one ends reads as a gap in the data.
+
+              A vertical tick rather than a dot: the svg is stretched to the
+              panel width with `preserveAspectRatio="none"`, which scales x and y
+              by different amounts, so a filled circle renders as an ellipse at
+              every width except the 640px the viewBox was authored at.
+              `vectorEffect` only rescues stroke geometry, not fill. A vertical
+              segment is invariant under horizontal scaling, and the rendered
+              height is pinned to the viewBox height, so it stays exact. */}
           {lastObserved ? (
-            <circle
-              cx={x(observed.length - 1)}
-              cy={y(lastObserved.value)}
-              r="2.5"
-              className="fill-accent"
+            <line
+              x1={x(observed.length - 1)}
+              x2={x(observed.length - 1)}
+              y1={y(lastObserved.value) - 3.5}
+              y2={y(lastObserved.value) + 3.5}
+              className="stroke-accent"
+              strokeWidth="1.75"
+              strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
             />
           ) : null}
@@ -311,7 +352,7 @@ export function ReportForecastChart({
   );
 }
 
-const SEVERITY_STYLES: Record<string, { label: string; className: string }> = {
+export const SEVERITY_STYLES: Record<string, { label: string; className: string }> = {
   critical: { label: "Critical", className: "border-status-rejected text-status-rejected" },
   bad: { label: "Critical", className: "border-status-rejected text-status-rejected" },
   warn: { label: "Warning", className: "border-status-pending text-[var(--warning-text)]" },

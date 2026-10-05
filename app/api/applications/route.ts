@@ -5,7 +5,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { apiError, withErrorHandling } from "@/lib/api";
-import { applicationRowSelect, serializeApplicationRow } from "@/lib/application-rows";
+import {
+  applicationRowSelect,
+  serializeApplicationRow,
+} from "@/lib/application-rows";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
@@ -77,7 +80,7 @@ export const GET = withErrorHandling(async (request: Request) => {
 
   return NextResponse.json({
     ok: true,
-    applications: applications.map(serializeApplicationRow),
+    applications: applications.map((row) => serializeApplicationRow(row)),
   });
 });
 
@@ -99,7 +102,11 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return apiError("invalid", parsed.error.issues[0]?.message ?? "Invalid request.", 400);
+    return apiError(
+      "invalid",
+      parsed.error.issues[0]?.message ?? "Invalid request.",
+      400,
+    );
   }
 
   // Resolve the pharmacy *before* authorizing: `createApplication` for an
@@ -175,5 +182,8 @@ export const POST = withErrorHandling(async (request: Request) => {
   // second `application` key would give the same field two meanings across
   // routes (`body.application` being the filing on one route and the whole row
   // on another), and the client mapper would need a per-route special case.
-  return NextResponse.json({ ok: true, ...serializeApplicationRow(row) }, { status: 201 });
+  return NextResponse.json(
+    { ok: true, ...serializeApplicationRow(row) },
+    { status: 201 },
+  );
 });

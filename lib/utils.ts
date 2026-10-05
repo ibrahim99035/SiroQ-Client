@@ -44,6 +44,26 @@ export function fmtDateTime(iso: string): string {
   return format(d, "MMM d, yyyy HH:mm");
 }
 
+/**
+ * Read a number back out of a value the service already formatted for display.
+ *
+ * The analysis service pre-formats its numbers as strings so that the geometry
+ * it ships and the text the reader sees can never disagree — `"1,204,318.00"`,
+ * `"95.0%"`, `"3 items"`. Anything that needs the magnitude rather than the
+ * rendering (bar widths, the quality-score colour band) has to invert that
+ * formatting. Returns null rather than 0 for text with no digits in it, so a
+ * caller can tell "zero" from "not a number" and abstain instead of drawing a
+ * fabricated zero-length bar.
+ */
+export function parseServiceNumber(text: string | number | null | undefined): number | null {
+  if (typeof text === "number") return Number.isFinite(text) ? text : null;
+  if (typeof text !== "string") return null;
+  const cleaned = text.replace(/[^0-9.\-]/g, "");
+  if (cleaned === "" || cleaned === "-" || cleaned === ".") return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function fmtMinutes(totalMinutes: number): string {
   if (totalMinutes <= 0) return "<1m";
   const days = Math.floor(totalMinutes / (60 * 24));

@@ -29,6 +29,7 @@ import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { can } from "@/lib/permissions";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { seededUser } from "./seed-accounts";
 
 /** Strips the quoting dotenv files use so values compare as plain strings. */
 function env(name: string): string {
@@ -178,6 +179,16 @@ async function login(email: string): Promise<string> {
  */
 const createdUploads: string[] = [];
 const createdKeys: string[] = [];
+/**
+ * `ApplicationFile` ids this run created, so cleanup can remove them — and the
+ * custody events that reference them — by identity rather than by filename.
+ */
+const createdFileIds: string[] = [];
+/**
+ * `(filing, filename)` pairs this run attached, for custody entries that can no
+ * longer be found by id — see cleanup.
+ */
+const attachedHere: { applicationId: string; filename: string }[] = [];
 /** Sessions that already existed, so cleanup never touches a developer's own. */
 let preExistingSessions: string[] = [];
 
@@ -233,13 +244,39 @@ async function uploadFile(
       ...(applicationId ? { applicationId } : {}),
     },
   });
-  return { uploadId, fileId: fileIdFrom(completed.body), created: created.status, completed };
+  const fileId = fileIdFrom(completed.body);
+  if (fileId) createdFileIds.push(fileId);
+  if (fileId && applicationId) attachedHere.push({ applicationId, filename: fileName });
+  return { uploadId, fileId, created: created.status, completed };
 }
 
-/** Removes every upload slot this run opened, plus the files they produced. */
+/**
+ * Removes every upload slot this run opened, plus the files they produced and
+ * the custody entries attaching them wrote.
+ *
+ * The events have to be deleted explicitly, and that is worth spelling out: the
+ * custody log is append-only, so a file row can be removed and its `uploaded`
+ * entry survives, pointing at an id that no longer resolves. That is the correct
+ * behaviour for a filing — history outliving the file is the point — but it means
+ * a test run against a *seeded* filing would otherwise append to a demo filing's
+ * permanent history every time it ran. These are the suite's own artifacts
+ * rather than a filing's history, so they go.
+ */
 async function cleanup(): Promise<void> {
   if (createdUploads.length === 0) return;
   try {
+    // Events first: `FileEvent.fileId` is a plain uuid with no foreign key, so
+    // the ids stay resolvable until the file rows are gone.
+    await prisma.fileEvent.deleteMany({ where: { fileId: { in: createdFileIds } } });
+    // And by (filing, filename) as well, because an earlier version of this
+    // teardown deleted the file rows but not their events. Those orphans name a
+    // file id that resolves to nothing, so id-matching can never find them, and
+    // they would otherwise sit in a seeded filing's custody log forever.
+    for (const { applicationId, filename } of attachedHere) {
+      await prisma.fileEvent.deleteMany({ where: { applicationId, filename } });
+    }
+    await prisma.applicationFile.deleteMany({ where: { id: { in: createdFileIds } } });
+    // Any residue from an earlier run of this suite, which cleaned up less.
     await prisma.applicationFile.deleteMany({
       where: { originalName: { in: [CSV_NAME, "own.csv", "override.csv"] } },
     });
@@ -292,25 +329,37 @@ async function main(): Promise<void> {
   const ownAssociation = appA.associationId;
   const ownPharmacy = appA.pharmacyId;
 
-  const adminA = await prisma.user.findFirstOrThrow({
-    where: { role: "pharmacy_association_admin", associationId: assocA, status: "active" },
-  });
-  const adminB = await prisma.user.findFirstOrThrow({
-    where: { role: "pharmacy_association_admin", associationId: assocB, status: "active" },
-  });
+  const adminA = await seededUser(
+    prisma,
+    { role: "pharmacy_association_admin", associationId: assocA, status: "active" },
+    "association admin",
+  );
+  const adminB = await seededUser(
+    prisma,
+    { role: "pharmacy_association_admin", associationId: assocB, status: "active" },
+    "association admin",
+  );
   // A worker at appA's own pharmacy: must be able to read it.
-  const workerSame = await prisma.user.findFirstOrThrow({
-    where: { role: "pharmacy_worker", pharmacyId: appA.pharmacyId, status: "active" },
-  });
-  const workerOther = await prisma.user.findFirstOrThrow({
-    where: { role: "pharmacy_worker", pharmacyId: { not: appA.pharmacyId }, status: "active" },
-  });
-  const moderator = await prisma.user.findFirstOrThrow({
-    where: { role: "moderator", status: "active" },
-  });
-  const superAdmin = await prisma.user.findFirstOrThrow({
-    where: { role: "super_admin", status: "active" },
-  });
+  const workerSame = await seededUser(
+    prisma,
+    { role: "pharmacy_worker", pharmacyId: appA.pharmacyId, status: "active" },
+    "pharmacy worker",
+  );
+  const workerOther = await seededUser(
+    prisma,
+    { role: "pharmacy_worker", pharmacyId: { not: appA.pharmacyId }, status: "active" },
+    "pharmacy worker",
+  );
+  const moderator = await seededUser(
+    prisma,
+    { role: "moderator", status: "active" },
+    "moderator",
+  );
+  const superAdmin = await seededUser(
+    prisma,
+    { role: "super_admin", status: "active" },
+    "super admin",
+  );
 
   console.log(
     `  A = ${appA.reference} @ ${appA.pharmacy.name}\n  B = ${appB.reference} @ ${appB.pharmacy.name}\n`,

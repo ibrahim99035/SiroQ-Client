@@ -9,7 +9,6 @@ import type {
   Pharmacy,
   PharmacyAssociation,
   Report,
-  
   User,
 } from "./types";
 
@@ -45,6 +44,14 @@ export class DataError extends Error {
 /* ---------------------------------------------------------------------- */
 
 export interface ApplicationRow {
+  /**
+   * Whether the analysis-service integration is switched on *and* configured.
+   *
+   * Resolved on the server, which is the only place that can see the API key, so
+   * the browser never learns anything about the service's credentials — only
+   * whether the feature it is allowed to offer is available.
+   */
+  analysisServiceAvailable: boolean;
   application: Application;
   pharmacy: Pharmacy;
   association: PharmacyAssociation;
@@ -182,14 +189,21 @@ export interface DashboardStats {
  * place (`apiApplicationRow`) so that asymmetry cannot leak into component
  * comparisons.
  */
-type ApiApplicationRow = Omit<ApplicationRow, "submitter"> & {
+type ApiApplicationRow = Omit<
+  ApplicationRow,
+  "submitter" | "analysisServiceAvailable"
+> & {
   submitter: ApiUser;
   application: ApplicationRow["application"] & { reportId?: string | null };
+  // Only the detail route reports it; the ledger list does not, and an absent
+  // flag must read as "not available" rather than as an unknown.
+  analysisServiceAvailable?: boolean;
 };
 
 function apiApplicationRow(row: ApiApplicationRow): ApplicationRow {
   return {
     ...row,
+    analysisServiceAvailable: row.analysisServiceAvailable ?? false,
     submitter: apiUserToUser(row.submitter),
     application: {
       ...row.application,
@@ -200,7 +214,9 @@ function apiApplicationRow(row: ApiApplicationRow): ApplicationRow {
   };
 }
 
-export async function fetchApplicationsForUser(_user: User): Promise<ApplicationRow[]> {
+export async function fetchApplicationsForUser(
+  _user: User,
+): Promise<ApplicationRow[]> {
   const body = await apiFetch<{ ok: true; applications: ApiApplicationRow[] }>(
     "/api/applications",
   );
@@ -211,7 +227,9 @@ export async function fetchApplicationForUser(
   _user: User,
   applicationId: string,
 ): Promise<ApplicationRow> {
-  const body = await apiFetch<ApiApplicationRow>(`/api/applications/${applicationId}`);
+  const body = await apiFetch<ApiApplicationRow>(
+    `/api/applications/${applicationId}`,
+  );
   return apiApplicationRow(body);
 }
 
@@ -226,8 +244,12 @@ export async function fetchApplicationForUser(
  * filtering is not relied on for security; it would only ever narrow what the
  * server already allowed.
  */
-export async function fetchPharmaciesForUser(_user: User): Promise<PharmacyRow[]> {
-  const body = await apiFetch<{ ok: true; pharmacies: ApiPharmacyRow[] }>("/api/pharmacies");
+export async function fetchPharmaciesForUser(
+  _user: User,
+): Promise<PharmacyRow[]> {
+  const body = await apiFetch<{ ok: true; pharmacies: ApiPharmacyRow[] }>(
+    "/api/pharmacies",
+  );
   return body.pharmacies.map((row) => ({
     pharmacy: {
       id: row.id,
@@ -250,8 +272,12 @@ export async function fetchPharmaciesForUser(_user: User): Promise<PharmacyRow[]
   }));
 }
 
-export async function fetchAssociationsForUser(_user: User): Promise<AssociationRow[]> {
-  const body = await apiFetch<{ ok: true; associations: ApiAssociation[] }>("/api/associations");
+export async function fetchAssociationsForUser(
+  _user: User,
+): Promise<AssociationRow[]> {
+  const body = await apiFetch<{ ok: true; associations: ApiAssociation[] }>(
+    "/api/associations",
+  );
   return body.associations.map((row) => ({
     association: {
       id: row.id,
@@ -282,7 +308,9 @@ export async function fetchUsersForUser(_user: User): Promise<User[]> {
   }));
 }
 
-export async function fetchDashboardForUser(user: User): Promise<DashboardStats> {
+export async function fetchDashboardForUser(
+  user: User,
+): Promise<DashboardStats> {
   const rows = await fetchApplicationsForUser(user);
   const applications = rows.map((r) => r.application);
 
@@ -294,13 +322,21 @@ export async function fetchDashboardForUser(user: User): Promise<DashboardStats>
     if (first && last) {
       avgMinutesAccum.count += 1;
       avgMinutesAccum.sum +=
-        (new Date(last.changedAt).getTime() - new Date(first.changedAt).getTime()) / 60000;
+        (new Date(last.changedAt).getTime() -
+          new Date(first.changedAt).getTime()) /
+        60000;
     }
   }
 
   const weekly = weeklySeries(applications, 8);
-  const weeklyPending = weeklySeries(applications.filter((a) => a.status === "pending"), 8);
-  const weeklyRejected = weeklySeries(applications.filter((a) => a.status === "rejected"), 8);
+  const weeklyPending = weeklySeries(
+    applications.filter((a) => a.status === "pending"),
+    8,
+  );
+  const weeklyRejected = weeklySeries(
+    applications.filter((a) => a.status === "rejected"),
+    8,
+  );
 
   return {
     total: applications.length,
@@ -308,8 +344,15 @@ export async function fetchDashboardForUser(user: User): Promise<DashboardStats>
     inReview: applications.filter((a) => a.status === "in_review").length,
     reported: reported.length,
     rejected: applications.filter((a) => a.status === "rejected").length,
-    avgTimeToReport: avgMinutesAccum.count > 0 ? avgMinutesAccum.sum / avgMinutesAccum.count : null,
-    rejectionRate: applications.length > 0 ? applications.filter((a) => a.status === "rejected").length / applications.length : 0,
+    avgTimeToReport:
+      avgMinutesAccum.count > 0
+        ? avgMinutesAccum.sum / avgMinutesAccum.count
+        : null,
+    rejectionRate:
+      applications.length > 0
+        ? applications.filter((a) => a.status === "rejected").length /
+          applications.length
+        : 0,
     weekly,
     weeklyPending,
     weeklyRejected,
@@ -317,7 +360,10 @@ export async function fetchDashboardForUser(user: User): Promise<DashboardStats>
   };
 }
 
-function weeklySeries(applications: Application[], weeks: number): WeeklyPoint[] {
+function weeklySeries(
+  applications: Application[],
+  weeks: number,
+): WeeklyPoint[] {
   const today = new Date();
   const points: WeeklyPoint[] = [];
   for (let i = weeks - 1; i >= 0; i -= 1) {
@@ -456,7 +502,10 @@ async function stageFileForUpload(file: File): Promise<PendingUpload> {
     return { completeUrl: reserved.completeUrl };
   }
 
-  return { completeUrl: reserved.completeUrl, dataBase64: await fileToBase64(file) };
+  return {
+    completeUrl: reserved.completeUrl,
+    dataBase64: await fileToBase64(file),
+  };
 }
 
 /**
@@ -483,7 +532,7 @@ async function completeStagedUpload(
  * spread blows the argument limit on a file of any real size, so the bytes are
  * concatenated in chunks.
  */
-async function fileToBase64(file: File): Promise<string> {
+export async function fileToBase64(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const CHUNK = 0x8000;
   let binary = "";
@@ -524,26 +573,67 @@ export async function createApplication(
     "POST",
     { title: input.title, pharmacyId: input.pharmacyId },
   );
-  const application = apiApplicationRow(created).application;
+  const stagedApplication = apiApplicationRow(created).application;
 
   try {
     for (const pending of staged) {
-      await completeStagedUpload(pending, application.id);
+      await completeStagedUpload(pending, stagedApplication.id);
     }
   } catch (reason) {
     throw new PartialSubmissionError(
       reason instanceof Error
-        ? `${reason.message} Filing ${application.reference} was created, but not every file attached to it.`
-        : `Filing ${application.reference} was created, but not every file attached to it.`,
-      application,
+        ? `${reason.message} Filing ${stagedApplication.reference} was created, but not every file attached to it.`
+        : `Filing ${stagedApplication.reference} was created, but not every file attached to it.`,
+      stagedApplication,
     );
   }
 
   // Re-read rather than patching the local copy: the server is now the only
   // authority on what a filing contains, and a partially failed upload must not
   // leave the page showing files the server rejected.
-  const refreshed = await apiFetch<ApiApplicationRow>(`/api/applications/${application.id}`);
-  return apiApplicationRow(refreshed).application;
+  const refreshed = await apiFetch<ApiApplicationRow>(
+    `/api/applications/${stagedApplication.id}`,
+  );
+  const application = apiApplicationRow(refreshed).application;
+
+  // Automatic trigger. This is the first moment the filing's file set is known
+  // to be complete: the row exists with no files at creation, and files attach
+  // one at a time afterwards, so hooking anything earlier would analyse a
+  // partial filing.
+  //
+  // Deliberately not awaited into the caller's success path. A filing that has
+  // been received and stored is a real filing whether or not the analysis service
+  // happens to be up; failing intake here would make an outage look like a
+  // rejected submission and push the user towards filing a duplicate. The user
+  // lands on the detail page either way, where the panel shows the outcome and
+  // offers the same action by hand.
+  void requestAnalysis(application.id);
+
+  return application;
+}
+
+/**
+ * Asks the server to start an analysis, without caring how it turns out.
+ *
+ * Fire-and-forget by design — see the call site. Errors are swallowed on purpose;
+ * the only thing a failure should cost is an analysis that has to be started by
+ * hand. `force` re-runs a filing whose previous run has already finished, which
+ * the server refuses to do on its own: two live runs of the same bytes would race
+ * to write the same report.
+ */
+export async function requestAnalysis(
+  applicationId: string,
+  options?: { force?: boolean },
+): Promise<void> {
+  try {
+    await apiSend<{ runId?: string }>(
+      `/api/applications/${applicationId}/analysis`,
+      "POST",
+      options?.force ? { force: true } : {},
+    );
+  } catch {
+    // Intentionally ignored.
+  }
 }
 
 export interface AttachReportInput {
@@ -589,6 +679,108 @@ export async function attachReport(
 }
 
 /**
+ * Attaches more files to a filing that already exists.
+ *
+ * No new endpoint is needed for this: a slot is reserved, the bytes go to
+ * storage, and the completion call names the filing. `createApplication` already
+ * runs that exact sequence -- it just happens to create the filing in the middle
+ * of it, because there is nothing to attach to before then.
+ *
+ * Files are bound one at a time and each binding is independent, so a failure
+ * part-way leaves the files that did land attached rather than rolling the whole
+ * batch back. That is the honest outcome: each attachment is separately
+ * authorised and separately recorded in the custody log, so the caller can say
+ * which ones took.
+ *
+ * The analysis re-run at the end is what keeps a filing's analysis true after its
+ * evidence changes, and it is deliberately not forced. Without `force`, the
+ * server refuses to start a second run while one is in flight and answers
+ * `alreadyRunning` instead, which avoids two live runs of the same filing racing
+ * to write the same report. The cost is one edge case: a ledger added while a
+ * run is already in flight is not picked up by *that* run. Re-running by hand
+ * from the analysis panel covers it, and forcing here would trade a rare manual
+ * step for a routine race.
+ *
+ * Attachments are stored but never analysed, so a filing whose only new file is
+ * evidence will not have anything new to analyse -- the re-run is harmless and
+ * the service simply sees the same ledgers it already holds.
+ */
+export async function addFilesToApplication(
+  applicationId: string,
+  files: File[],
+): Promise<Application> {
+  const failures: string[] = [];
+  for (const file of files) {
+    try {
+      const pending = await stageFileForUpload(file);
+      await completeStagedUpload(pending, applicationId);
+    } catch (reason) {
+      failures.push(
+        `${file.name}: ${reason instanceof Error ? reason.message : String(reason)}`,
+      );
+    }
+  }
+
+  // Re-read even when everything failed: the server is the authority on what the
+  // filing contains now, and a partial batch must not leave the page showing a
+  // file the server refused.
+  const refreshed = await apiFetch<ApiApplicationRow>(`/api/applications/${applicationId}`);
+  const application = apiApplicationRow(refreshed).application;
+
+  if (failures.length > 0) {
+    throw new PartialAttachmentError(
+      failures.length === 1
+        ? `1 file could not be attached: ${failures[0]}`
+        : `${failures.length} files could not be attached: ${failures.join("; ")}`,
+      application,
+    );
+  }
+
+  void requestAnalysis(applicationId);
+
+  return application;
+}
+
+/**
+ * Raised when a filing exists but some of the files offered for it were refused.
+ *
+ * Carries the filing so the caller can render the files that *did* land instead
+ * of discarding the whole batch from view on the first error.
+ */
+export class PartialAttachmentError extends Error {
+  readonly application: Application;
+
+  constructor(message: string, application: Application) {
+    super(message);
+    this.name = "PartialAttachmentError";
+    this.application = application;
+  }
+}
+
+/**
+ * Writes a report's projection back after an edit.
+ *
+ * Sends `rawData` alongside `resultData` rather than letting the server derive
+ * one: the two are an audit pair, and a save that updated only `resultData`
+ * would leave the stored document disagreeing with the tree rendered from it.
+ * The document is pretty-printed here, matching the manual attach, because the
+ * raw view is for reading a document back.
+ *
+ * The whole projection is replaced, so the caller must send a complete document
+ * — see `mergeRichTextBlocks` for how the narrative keeps the service's own keys.
+ */
+export async function updateReport(
+  reportId: string,
+  resultData: Record<string, unknown>,
+  _user: User,
+): Promise<void> {
+  await apiSend<{ ok: true }>(`/api/reports/${reportId}`, "PATCH", {
+    resultData,
+    rawData: JSON.stringify(resultData, null, 2),
+  });
+}
+
+/**
  * Fetches a report's stored document. Called only when the panel's raw toggle
  * is opened, because the document is capped at 4 MB and is deliberately absent
  * from the application row.
@@ -597,9 +789,11 @@ export async function fetchReportRaw(
   reportId: string,
   _user: User,
 ): Promise<{ applicationId: string; rawData: string }> {
-  const body = await apiFetch<{ ok: true; applicationId: string; rawData: string }>(
-    `/api/reports/${reportId}/raw`,
-  );
+  const body = await apiFetch<{
+    ok: true;
+    applicationId: string;
+    rawData: string;
+  }>(`/api/reports/${reportId}/raw`);
   return { applicationId: body.applicationId, rawData: body.rawData };
 }
 
@@ -630,6 +824,39 @@ export async function updateApplicationStatus(
   return apiApplicationRow(body).application;
 }
 
+/**
+ * Replace a file's contents on a filing.
+ *
+ * Same JSON-with-base64 shape as completing a staged upload, so the server has
+ * one code path for "these bytes arrived from a browser" rather than one per
+ * caller. The response is not mapped to an `ApplicationFile`: the change also
+ * moves `uploadedById` and appends a custody entry, so the caller reloads the
+ * filing instead of patching a single field and leaving the ledger stale.
+ */
+export async function replaceApplicationFile(
+  applicationId: string,
+  fileId: string,
+  file: File,
+  _user: User,
+): Promise<void> {
+  await apiSend(`/api/applications/${applicationId}/files/${fileId}`, "PATCH", {
+    dataBase64: await fileToBase64(file),
+    filename: file.name,
+  });
+}
+
+/**
+ * Remove a file from a filing. The custody entry this writes is permanent; the
+ * file is not restorable from it.
+ */
+export async function deleteApplicationFile(
+  applicationId: string,
+  fileId: string,
+  _user: User,
+): Promise<void> {
+  await apiSend(`/api/applications/${applicationId}/files/${fileId}`, "DELETE");
+}
+
 export interface CreateUserInput {
   name: string;
   email: string;
@@ -639,15 +866,21 @@ export interface CreateUserInput {
   status?: User["status"];
 }
 
-
-export async function inviteUser(input: CreateUserInput, _user: User): Promise<User> {
-  const body = await apiSend<{ ok: true; user: ApiUser }>("/api/users", "POST", {
-    name: input.name,
-    email: input.email,
-    role: input.role,
-    associationId: input.associationId,
-    pharmacyId: input.pharmacyId,
-  });
+export async function inviteUser(
+  input: CreateUserInput,
+  _user: User,
+): Promise<User> {
+  const body = await apiSend<{ ok: true; user: ApiUser }>(
+    "/api/users",
+    "POST",
+    {
+      name: input.name,
+      email: input.email,
+      role: input.role,
+      associationId: input.associationId,
+      pharmacyId: input.pharmacyId,
+    },
+  );
   return apiUserToUser(body.user);
 }
 
@@ -660,16 +893,24 @@ export interface UpdateUserInput {
   status?: User["status"];
 }
 
-export async function updateUser(userId: string, patch: UpdateUserInput, _user: User): Promise<User> {
-  const body = await apiSend<{ ok: true; user: ApiUser }>(`/api/users/${userId}`, "PATCH", {
-    name: patch.name,
-    email: patch.email,
-    role: patch.role,
-    associationId: patch.associationId,
-    // `undefined` means "leave alone"; the API needs null to mean "clear".
-    pharmacyId: patch.pharmacyId === undefined ? undefined : patch.pharmacyId,
-    status: patch.status,
-  });
+export async function updateUser(
+  userId: string,
+  patch: UpdateUserInput,
+  _user: User,
+): Promise<User> {
+  const body = await apiSend<{ ok: true; user: ApiUser }>(
+    `/api/users/${userId}`,
+    "PATCH",
+    {
+      name: patch.name,
+      email: patch.email,
+      role: patch.role,
+      associationId: patch.associationId,
+      // `undefined` means "leave alone"; the API needs null to mean "clear".
+      pharmacyId: patch.pharmacyId === undefined ? undefined : patch.pharmacyId,
+      status: patch.status,
+    },
+  );
   return apiUserToUser(body.user);
 }
 
@@ -686,7 +927,11 @@ export async function updateOwnProfile(patch: {
   name?: string;
   email?: string;
 }): Promise<User> {
-  const body = await apiSend<{ ok: true; user: ApiUser }>("/api/users/me", "PATCH", patch);
+  const body = await apiSend<{ ok: true; user: ApiUser }>(
+    "/api/users/me",
+    "PATCH",
+    patch,
+  );
   return apiUserToUser(body.user);
 }
 
@@ -704,17 +949,23 @@ export async function createAssociation(
   input: CreateAssociationInput & { status?: PharmacyAssociation["status"] },
   _user: User,
 ): Promise<PharmacyAssociation> {
-  const body = await apiSend<{ ok: true; association: ApiAssociation }>("/api/associations", "POST", {
-    name: input.name,
-    region: input.region,
-    gmpCertificateId: input.gmpCertificateId,
-  });
+  const body = await apiSend<{ ok: true; association: ApiAssociation }>(
+    "/api/associations",
+    "POST",
+    {
+      name: input.name,
+      region: input.region,
+      gmpCertificateId: input.gmpCertificateId,
+    },
+  );
   return apiAssociation(body.association);
 }
 
 export async function updateAssociation(
   associationId: string,
-  patch: Partial<CreateAssociationInput> & { status?: PharmacyAssociation["status"] },
+  patch: Partial<CreateAssociationInput> & {
+    status?: PharmacyAssociation["status"];
+  },
   _user: User,
 ): Promise<PharmacyAssociation> {
   const body = await apiSend<{ ok: true; association: ApiAssociation }>(
@@ -725,7 +976,10 @@ export async function updateAssociation(
   return apiAssociation(body.association);
 }
 
-export async function deleteAssociation(associationId: string, _user: User): Promise<void> {
+export async function deleteAssociation(
+  associationId: string,
+  _user: User,
+): Promise<void> {
   // A populated association answers 409: the delete would cascade into
   // pharmacies, filings, and users. The message is surfaced verbatim so the
   // admin sees the actual counts.
@@ -743,12 +997,16 @@ export async function createPharmacy(
   input: CreatePharmacyInput & { status?: Pharmacy["status"] },
   _user: User,
 ): Promise<Pharmacy> {
-  const body = await apiSend<{ ok: true; pharmacy: ApiPharmacyRow }>("/api/pharmacies", "POST", {
-    associationId: input.associationId,
-    name: input.name,
-    address: input.address,
-    licenseNumber: input.licenseNumber,
-  });
+  const body = await apiSend<{ ok: true; pharmacy: ApiPharmacyRow }>(
+    "/api/pharmacies",
+    "POST",
+    {
+      associationId: input.associationId,
+      name: input.name,
+      address: input.address,
+      licenseNumber: input.licenseNumber,
+    },
+  );
   return apiPharmacy(body.pharmacy);
 }
 
@@ -765,16 +1023,20 @@ export async function updatePharmacy(
   return apiPharmacy(body.pharmacy);
 }
 
-export async function deletePharmacy(pharmacyId: string, _user: User): Promise<void> {
+export async function deletePharmacy(
+  pharmacyId: string,
+  _user: User,
+): Promise<void> {
   await apiSend(`/api/pharmacies/${pharmacyId}`, "DELETE");
 }
-
 
 /* ---------------------------------------------------------------------- */
 /* Shared helpers for components                                           */
 /* ---------------------------------------------------------------------- */
 
-export function permissionResourceFor(application: Application): PermissionResource {
+export function permissionResourceFor(
+  application: Application,
+): PermissionResource {
   if (!application.associationId) return { pharmacyId: application.pharmacyId };
   return {
     pharmacyId: application.pharmacyId,

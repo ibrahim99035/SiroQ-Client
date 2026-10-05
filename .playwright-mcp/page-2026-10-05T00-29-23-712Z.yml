@@ -1,0 +1,28 @@
+- generic [ref=f6e2]:
+  - generic [ref=f6e3]:
+    - link "SiroQ" [ref=f6e4] [cursor=pointer]:
+      - /url: /
+    - paragraph [ref=f6e9]: "rig of a review floor: a visible chain of custody from staging to stamped report."
+    - paragraph [ref=f6e10]: secure access · sessions expire and can be revoked
+  - generic [ref=f6e13]:
+    - heading "Sign in" [level=1] [ref=f6e14]
+    - paragraph [ref=f6e15]: Sign in with your work email. Access is scoped to your role and organisation.
+    - generic [ref=f6e16]:
+      - generic [ref=f6e17]:
+        - text: Email
+        - textbox "Email" [ref=f6e18]:
+          - /placeholder: you@pharmacy.org
+      - generic [ref=f6e19]:
+        - text: Password
+        - textbox "Password" [ref=f6e20]:
+          - /placeholder: ••••••••
+      - button "Sign in" [ref=f6e21] [cursor=pointer]
+    - link "Forgot your password?" [ref=f6e23] [cursor=pointer]:
+      - /url: /forgot-password
+    - paragraph [ref=f6e24]:
+      - text: New to SiroQ?
+      - link "Create an account" [ref=f6e25] [cursor=pointer]:
+        - /url: /signup
+      - text: ·
+      - link "Back to site" [ref=f6e26] [cursor=pointer]:
+        - /url: /

@@ -13,6 +13,8 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+import { contentTypeForName } from "@/lib/file-types";
+
 /**
  * Object storage for uploaded filings (.xlsx / .csv).
  *
@@ -225,6 +227,41 @@ export async function presignPut(
   return { url, expiresIn: expiresInSeconds };
 }
 
+/**
+ * Presigned GET, so another service can read one of our objects without ever
+ * holding our credentials.
+ *
+ * This is how files reach the analysis service: it cannot be given a storage key
+ * (Neon buckets are branch-scoped, so ours are in a namespace it has no access
+ * to) and we do not want to proxy the bytes through a serverless function. A
+ * short-lived signed read URL hands over the one thing it needs instead.
+ *
+ * Keep `expiresInSeconds` as small as the consumer's real deadline allows. The
+ * URL is a bearer credential for the object: anyone holding it can read the
+ * filing until it expires, and it may travel through a third party's logs on the
+ * way.
+ *
+ * The analysis handoff passes a longer life than the default because its clock
+ * starts at enqueue, not at the moment of use, and it has to outlast a queue
+ * backlog and the service's stale-job window. A URL handed to a person clicking
+ * a download button should keep the short default — they use it immediately.
+ */
+export async function presignGet(
+  key: string,
+  expiresInSeconds = 300,
+): Promise<{ url: string; expiresIn: number }> {
+  assertSafeKey(key);
+  if (storageDriver() === "local") {
+    throw new Error("The local storage driver has no presigned reads.");
+  }
+  const url = await getSignedUrl(
+    s3Client(),
+    new GetObjectCommand({ Bucket: bucket(), Key: key }),
+    { expiresIn: expiresInSeconds },
+  );
+  return { url, expiresIn: expiresInSeconds };
+}
+
 function isNotFound(error: unknown): boolean {
   const name = (error as { name?: string } | null)?.name;
   const status = (error as { $metadata?: { httpStatusCode?: number } } | null)?.$metadata
@@ -233,11 +270,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 function contentTypeFor(key: string): string {
-  if (key.toLowerCase().endsWith(".csv")) return "text/csv";
-  if (key.toLowerCase().endsWith(".xlsx")) {
-    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  }
-  return "application/octet-stream";
+  return contentTypeForName(key);
 }
 
 /** Converts a Node stream into the Web stream a Next response needs. */

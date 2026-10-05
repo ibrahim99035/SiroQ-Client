@@ -3,18 +3,29 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import * as React from "react";
+import { AnalysisPanel } from "@/components/analysis-panel";
 import { AttachReportDialog } from "@/components/attach-report-dialog";
-import { EmptyState, NotAuthorized, SystemError } from "@/components/data-states";
+import {
+  EmptyState,
+  NotAuthorized,
+  SystemError,
+} from "@/components/data-states";
+import { FileCustodyLog } from "@/components/file-custody-log";
 import { FileLedger } from "@/components/file-ledger";
 import { PageHeading } from "@/components/page-heading";
 import { VisibleWhen } from "@/components/permission-gate";
+import { ReportNarrative } from "@/components/report-narrative";
 import { ReportPanel } from "@/components/report-panel";
 import { RequisitionHeader } from "@/components/requisition-header";
 import { StatusTimeline } from "@/components/status-timeline";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useResource } from "@/components/use-resource";
-import { DataError, fetchApplicationForUser, updateApplicationStatus } from "@/lib/data";
+import {
+  DataError,
+  fetchApplicationForUser,
+  updateApplicationStatus,
+} from "@/lib/data";
 import { PermissionError } from "@/lib/permissions";
 import { useCurrentUser } from "@/components/session-provider";
 import type { ApplicationStatus } from "@/lib/types";
@@ -55,7 +66,9 @@ export default function ApplicationDetailPage() {
       // `catch { reload() }` below it turned every refusal into a silent no-op,
       // so a user who could not move a filing was told nothing at all.
       setAdvanceError(
-        reason instanceof Error ? reason.message : "That status change was refused.",
+        reason instanceof Error
+          ? reason.message
+          : "That status change was refused.",
       );
     } finally {
       setAdvancing(false);
@@ -65,10 +78,15 @@ export default function ApplicationDetailPage() {
   return (
     <div>
       <nav aria-label="Breadcrumb" className="mb-2">
-        <Link href="/applications" className="text-[13px] text-accent hover:underline">
+        <Link
+          href="/applications"
+          className="text-[13px] text-accent hover:underline"
+        >
           Applications
         </Link>
-        <span className="mx-2 text-hairline" aria-hidden="true">/</span>
+        <span className="mx-2 text-hairline" aria-hidden="true">
+          /
+        </span>
         {/* The filing reference, not the route id. `id` is a UUID, which is
             database identity rather than anything a user recognises; the mock
             layer used the reference as the key, so this slot used to read
@@ -92,11 +110,15 @@ export default function ApplicationDetailPage() {
                 </Button>
               }
             >
-              The reference <span className="font-mono text-[12px] text-ink">{id}</span> is not part
-              of the current dataset, or it was removed by a governance action.
+              The reference{" "}
+              <span className="font-mono text-[12px] text-ink">{id}</span> is
+              not part of the current dataset, or it was removed by a governance
+              action.
             </EmptyState>
           ) : null}
-          {!isPermission && !isNotFound ? <SystemError error={error!} onRetry={reload} /> : null}
+          {!isPermission && !isNotFound ? (
+            <SystemError error={error!} onRetry={reload} />
+          ) : null}
         </div>
       ) : (
         <div>
@@ -130,7 +152,10 @@ export default function ApplicationDetailPage() {
                     answers with 409 because the status is already that. An
                     action that can only fail should not be on the screen. */}
                 {isTerminal ? (
-                  <div className="flex flex-wrap items-center gap-2 card px-4 py-3" aria-label="Filing controls">
+                  <div
+                    className="flex flex-wrap items-center gap-2 card px-4 py-3"
+                    aria-label="Filing controls"
+                  >
                     <p className="text-[13px] text-muted">
                       {status === "reported"
                         ? "This filing is reported and closed to further changes. The attached report is the deliverable."
@@ -138,9 +163,13 @@ export default function ApplicationDetailPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap items-center gap-2 card px-4 py-3" aria-label="Filing controls">
+                  <div
+                    className="flex flex-wrap items-center gap-2 card px-4 py-3"
+                    aria-label="Filing controls"
+                  >
                     <p className="mr-auto text-[13px] text-muted">
-                      Triage this filing: advance the review state or attach a report.
+                      Triage this filing: advance the review state, report it,
+                      or reject it.
                     </p>
                     {status === "pending" ? (
                       <Button
@@ -150,6 +179,23 @@ export default function ApplicationDetailPage() {
                         onClick={() => void advance("in_review")}
                       >
                         Move to in review
+                      </Button>
+                    ) : null}
+                    {/* Offered only once a report exists. The status route
+                        answers `reported` with 409 and "Attach a report to mark
+                        a filing as reported." when there is none, so a button
+                        that could only fail must not be on the screen. A report
+                        from the analysis service is stored without moving the
+                        filing — confirming it is delivered is the step this
+                        button is missing. */}
+                    {data!.report ? (
+                      <Button
+                        size="sm"
+                        variant="warm"
+                        disabled={advancing}
+                        onClick={() => void advance("reported")}
+                      >
+                        Mark as reported
                       </Button>
                     ) : null}
                     <Button
@@ -172,11 +218,38 @@ export default function ApplicationDetailPage() {
                 ) : null}
               </VisibleWhen>
 
+              {/* The narrative sits above the analysis: a reader meets the
+                  argument before the evidence it rests on. Only rendered once a
+                  report exists, because the blocks live in the report's own
+                  document. */}
+              {data!.report ? (
+                <ReportNarrative
+                  report={data!.report}
+                  onSaved={reload}
+                  files={data!.application.files}
+                />
+              ) : null}
+
+              <AnalysisPanel
+                applicationId={id}
+                available={data!.analysisServiceAvailable}
+                latestRun={data!.application.latestRun}
+                onReportStored={reload}
+              />
+
               <section aria-labelledby="ledger-title">
-                <h2 id="ledger-title" className="mb-3 text-base font-semibold text-ink">
+                <h2
+                  id="ledger-title"
+                  className="mb-3 text-base font-semibold text-ink"
+                >
                   File ledger
                 </h2>
-                <FileLedger files={data!.application.files} />
+                <FileLedger
+                  files={data!.application.files}
+                  applicationId={data!.application.id}
+                  canAddFiles={data!.application.canAddFiles}
+                  onChanged={reload}
+                />
               </section>
 
               {data!.report ? (
@@ -184,8 +257,11 @@ export default function ApplicationDetailPage() {
               ) : (
                 <section className="card px-5 py-4">
                   <p className="text-sm text-muted">
-                    No report is attached to this filing yet. A super admin generates one from the
-                    ledger metadata; the filing flips to <span className="font-mono text-[11px] text-ink">reported</span>{" "}
+                    No report is attached to this filing yet. A super admin
+                    generates one from the ledger metadata; the filing flips to{" "}
+                    <span className="font-mono text-[11px] text-ink">
+                      reported
+                    </span>{" "}
                     and the stamp updates everywhere.
                   </p>
                 </section>
@@ -193,8 +269,18 @@ export default function ApplicationDetailPage() {
             </div>
 
             <aside aria-label="Status" className="h-fit lg:sticky lg:top-20">
-              <h2 className="mb-3 text-base font-semibold text-ink">Chain of custody</h2>
+              <h2 className="mb-3 text-base font-semibold text-ink">
+                Chain of custody
+              </h2>
               <StatusTimeline application={data!.application} />
+              {/* A second block under the same heading, not another stage in the
+                  timeline: status moves a filing through three states and stops,
+                  while evidence can change at any point in that journey — including
+                  after it is reported. */}
+              <h3 className="mt-6 mb-3 text-[13px] font-semibold text-ink">
+                Evidence changes
+              </h3>
+              <FileCustodyLog events={data!.application.fileEvents} />
             </aside>
           </div>
         </div>

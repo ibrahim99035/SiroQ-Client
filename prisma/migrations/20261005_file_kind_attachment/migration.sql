@@ -1,0 +1,23 @@
+-- Add the "attachment" file kind.
+--
+-- One bucket for every format that is stored as supporting evidence rather than
+-- analysed as a dispensing ledger: Power BI (.pbix/.pbit), Tableau
+-- (.twb/.twbx/.tds/.tdsx/.hyper) and raw data formats (.parquet/.json/.sql/.pdf).
+--
+-- Deliberately additive only: no table is created or rewritten, and no existing
+-- row is touched. The new value is not *used* anywhere in this migration, so
+-- this is safe to run inside a transaction -- Postgres only refuses a statement
+-- that reads a value added by an uncommitted ALTER TYPE in the same transaction,
+-- and nothing here does that.
+--
+-- ADD VALUE cannot be rolled back, which is why it is isolated in its own
+-- migration file rather than folded into a data migration alongside it.
+--
+-- Deliberately NOT included, though `prisma migrate diff` reports both against
+-- the live database: they are pre-existing drift unrelated to this change, and
+-- folding them in would make this migration destructive and irreversible.
+--   * ALTER TYPE "FileKind" ADD VALUE 'xls'  -- the live database is missing a
+--     value the committed schema has always declared.
+--   * the sequence-backed default for Application.reference.
+
+ALTER TYPE "FileKind" ADD VALUE IF NOT EXISTS 'attachment';

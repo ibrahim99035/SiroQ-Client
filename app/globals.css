@@ -121,60 +121,76 @@
  *    ground, `--paper-raised` the card above it, `--surface-sunken` the inset
  *    well beneath it.
  */
-:root[data-theme="dark"] {
-  color-scheme: dark;
+/*
+ * Screen-only, deliberately.
+ *
+ * Both dark-theme blocks below are gated on `screen` so that printing uses the
+ * light `:root` values without a second copy of every token. The alternative —
+ * re-declaring the light palette inside `@media print` — works and is what the
+ * service's own printable does, but it duplicates thirty values that then have
+ * to be kept in step by hand, and the day one drifts the printed report and the
+ * screen disagree. Gating the dark side costs one keyword and cannot drift.
+ *
+ * The visible consequence is that a reader who chose the dark theme and hits
+ * Cmd+P gets the light one, which is the right outcome for a document meant to
+ * be filed.
+ */
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
 
-  --paper: #0d1211;
-  --paper-raised: #151d1c;
-  --surface-sunken: #101716;
+    --paper: #0d1211;
+    --paper-raised: #151d1c;
+    --surface-sunken: #101716;
 
-  --ink: #e6eeec;
-  --muted-text: #94a5a2;
+    --ink: #e6eeec;
+    --muted-text: #94a5a2;
 
-  --accent: #63ada5;
-  --accent-strong: #86c6bd;
-  --accent-muted: #1b2b29;
-  --accent-soft: #16211f;
+    --accent: #63ada5;
+    --accent-strong: #86c6bd;
+    --accent-muted: #1b2b29;
+    --accent-soft: #16211f;
 
-  --accent-warm: #d9975e;
-  --accent-warm-strong: #c07c43;
+    --accent-warm: #d9975e;
+    --accent-warm-strong: #c07c43;
 
-  --hairline: #26322f;
-  --border-strong: #31403c;
+    --hairline: #26322f;
+    --border-strong: #31403c;
 
-  --status-pending: #d2a13f;
-  --status-in-review: #5f9ed6;
-  --status-reported: #4fae7d;
-  --status-rejected: #d4695a;
+    --status-pending: #d2a13f;
+    --status-in-review: #5f9ed6;
+    --status-reported: #4fae7d;
+    --status-rejected: #d4695a;
 
-  --status-pending-fill: #e0b45c;
-  --status-in-review-fill: #86bce8;
-  --status-reported-fill: #7fcca3;
-  --status-rejected-fill: #e89083;
-    /* Lightened status fills need a dark label, not white. */
-    --stamp-ink: #1a1611;
-    --stamp-ring: rgba(0, 0, 0, 0.16);
-    --on-accent: #0f1e1d;
+    --status-pending-fill: #e0b45c;
+    --status-in-review-fill: #86bce8;
+    --status-reported-fill: #7fcca3;
+    --status-rejected-fill: #e89083;
+      /* Lightened status fills need a dark label, not white. */
+      --stamp-ink: #1a1611;
+      --stamp-ring: rgba(0, 0, 0, 0.16);
+      --on-accent: #0f1e1d;
 
 
-  --overlay: rgba(0, 0, 0, 0.62);
+    --overlay: rgba(0, 0, 0, 0.62);
 
-  --placeholder-text: #7d8f8b;
-  --danger-text: #f0a89c;
-  --danger-tint: #241a19;
-  --danger-top: #8f4438;
-  --warning-text: #e0b45c;
-  --warning-border: #8a6d12;
-  --success-text: #7fcca3;
-  --accent-muted-hover: #24332f;
-  --accent-warm-top: #b06f3e;
+    --placeholder-text: #7d8f8b;
+    --danger-text: #f0a89c;
+    --danger-tint: #241a19;
+    --danger-top: #8f4438;
+    --warning-text: #e0b45c;
+    --warning-border: #8a6d12;
+    --success-text: #7fcca3;
+    --accent-muted-hover: #24332f;
+    --accent-warm-top: #b06f3e;
+  }
 }
 
 /*
  * Follows the OS only while the visitor has expressed no preference. Once they
  * toggle, `data-theme` is set explicitly and this stops applying.
  */
-@media (prefers-color-scheme: dark) {
+@media screen and (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
     color-scheme: dark;
 
@@ -428,5 +444,100 @@
 @layer utilities {
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Print.
+ *
+ * The report is the one thing in this product that leaves the screen, so it has
+ * to survive being printed: filed, pasted into a PDF, handed to an auditor. The
+ * dark theme is already gated on `screen` above, so the light `:root` palette
+ * governs paper without a duplicated token set, and `color-scheme: light` stops
+ * the browser from auto-inverting controls and backgrounds behind our back.
+ *
+ * Application chrome is hidden through `data-app-chrome` hooks rather than by
+ * matching on utility class names, which would break the moment a class is
+ * reordered or a breakpoint changes.
+ */
+@page {
+  margin: 14mm;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+
+  [data-app-chrome="header"],
+  [data-app-chrome="nav"] {
+    display: none;
+  }
+
+  /* The centred reading column is a screen affordance. On paper the sheet owns
+     the full measure, so a wide report is not squeezed into a 72rem track with
+     a gutter of dead margin down one side. */
+  [data-app-chrome="main"] {
+    max-width: none;
+    padding: 0;
+  }
+
+  /* Shadows are the clearest tell that a screen layout was printed as-is: they
+     render as smudges on paper and, on a colour printer, as banding. */
+  .card,
+  .stamp {
+    box-shadow: none;
+  }
+
+  /* A card, a chart, or a table row split across a page boundary reads as
+     corruption rather than as a continuation. The service's own printable sets
+     the same rules (`report.html:93-95`). */
+  .card,
+  figure,
+  table,
+  tr,
+  pre {
+    break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+  }
+
+  /* Hairlines are drawn with alpha in both themes. Printers resolve alpha
+     against whatever is underneath, which on a page with no background can land
+     either invisible or as a solid grey band; pinning them keeps every rule
+     visible and every fill absent. */
+  .card {
+    border-color: var(--hairline);
+  }
+
+  /*
+   * Controls are not content. A button on paper is a grey box that does
+   * nothing, and hiding it at the element keeps the prose around it: the
+   * filing-status cards explain *why* a filing is closed, which belongs in a
+   * filed copy, while the "Advance review" button beside it does not. The same
+   * rule covers the report's own disclosure toggle — the button goes, the
+   * expanded raw document stays, so a reviewer who opened it before printing
+   * still gets it on the page.
+   */
+  button,
+  [role="button"] {
+    display: none;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9px;
+    color: var(--muted-text);
+    word-break: break-all;
   }
 }

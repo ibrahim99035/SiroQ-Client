@@ -18,6 +18,14 @@
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import {
+  emptyDoc,
+  isBlankDoc,
+  mergeRichTextBlocks,
+  nextBlockKey,
+  pdfAttachments,
+  resultDataToBlocks,
+} from "../lib/report-blocks";
 
 function env(name: string): string {
   return (process.env[name] ?? "").replace(/^['"]|['"]$/g, "");
@@ -442,6 +450,26 @@ function findTagged(node: unknown, found: Record<string, unknown>[] = []): Recor
     for (const value of Object.values(record)) findTagged(value, found);
   }
   return found;
+}
+
+/**
+ * Deletes a probe filing without ever throwing.
+ *
+ * Cleanup runs in a `finally`, so a failure here replaces whatever the run was
+ * actually reporting: the suite would report a database timeout as its verdict
+ * and the real assertion would never be seen. Worse, the probe survives, so the
+ * next run trips over it. A leaked row is worth a warning; losing the result is
+ * not. The remote database in this environment times out often enough for this
+ * to be the difference between a readable run and no run.
+ */
+async function discard(prisma: PrismaClient, id: string): Promise<void> {
+  try {
+    const gone = await prisma.application.deleteMany({ where: { id } });
+    if (gone.count > 0) console.log(`\n  removed probe filing ${id}`);
+  } catch (reason) {
+    console.warn(`\n  WARNING: could not remove probe filing ${id}; delete it by hand.`);
+    console.warn(reason instanceof Error ? reason.message : reason);
+  }
 }
 
 async function main() {
@@ -889,8 +917,267 @@ async function main() {
         audit.taggedObjectListItems.length > 0,
         audit.taggedObjectListItems.length,
       );
+
+      // ---- a narrative edit must not cost the projection anything ----------
+      // The detail page's narrative sections are `$rich` nodes stored *inside*
+      // `result_data`, so a save from that editor rewrites the whole document.
+      // `mergeRichTextBlocks` is therefore the only thing standing between a
+      // reviewer's edit and the loss of every finding the analysis produced:
+      // building the document from the blocks alone writes back a report
+      // containing nothing but prose, with no error and no audit row to notice
+      // it by.
+      //
+      // Asserted against the real fixture, and against the function itself. An
+      // earlier version of this section drove the same scenario over HTTP and
+      // passed even with the merge deliberately broken — it PATCHed a document
+      // the test had built itself, so the code under test was never called.
+      console.log("\n  a narrative edit preserves the projection");
+
+      const narrativeDoc = {
+        type: "doc",
+        content: [
+          { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Conclusion" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Two files need review." }] },
+        ],
+      };
+      const projection = SERVICE_DOCUMENT as Record<string, unknown>;
+      const storedBlocks = resultDataToBlocks(projection);
+      check(
+        "a service projection contains no narrative blocks to begin with",
+        storedBlocks.length === 0,
+        storedBlocks.map((block) => block.id),
+      );
+
+      const added = mergeRichTextBlocks(projection, [
+        { id: "Rich text 1", title: "Conclusion", content: narrativeDoc },
+      ]);
+      check(
+        "adding a section keeps every projection key",
+        Object.keys(projection).every((key) => deepEqual(added[key], projection[key])),
+        Object.keys(projection).filter((key) => !deepEqual(added[key], projection[key])),
+      );
+      check(
+        "the added section is readable back out of the document",
+        deepEqual(resultDataToBlocks(added), [
+          { id: "Rich text 1", title: "Conclusion", content: narrativeDoc },
+        ]),
+        resultDataToBlocks(added),
+      );
+
+      // Deleting must remove exactly the block deleted — an implementation that
+      // rebuilt the document from the surviving blocks alone would pass the add
+      // above and then lose the projection on the way out.
+      check(
+        "removing the section restores the original document",
+        deepEqual(mergeRichTextBlocks(added, []), projection),
+        Object.keys(mergeRichTextBlocks(added, [])).filter(
+          (key) => !deepEqual(mergeRichTextBlocks(added, [])[key], projection[key]),
+        ),
+      );
+
+      const twoBlocks = mergeRichTextBlocks(projection, [
+        { id: "Rich text 1", title: "Conclusion", content: narrativeDoc },
+        { id: "Rich text 2", title: "Caveats", content: narrativeDoc },
+      ]);
+      check(
+        "deleting one of two sections leaves the other",
+        deepEqual(resultDataToBlocks(mergeRichTextBlocks(twoBlocks, [
+          { id: "Rich text 2", title: "Caveats", content: narrativeDoc },
+        ])), [{ id: "Rich text 2", title: "Caveats", content: narrativeDoc }]),
+        resultDataToBlocks(mergeRichTextBlocks(twoBlocks, [
+          { id: "Rich text 2", title: "Caveats", content: narrativeDoc },
+        ])),
+      );
+      check(
+        "and still keeps the projection",
+        Object.keys(projection).every((key) => deepEqual(twoBlocks[key], projection[key])),
+        Object.keys(projection).filter((key) => !deepEqual(twoBlocks[key], projection[key])),
+      );
+
+      check(
+        "an added section never reuses a key already in the document",
+        nextBlockKey(["Rich text 1", "Rich text 2"]) === "Rich text 3",
+        nextBlockKey(["Rich text 1", "Rich text 2"]),
+      );
+      check(
+        "a blank section is recognised as blank",
+        isBlankDoc(emptyDoc()) && !isBlankDoc(narrativeDoc),
+      );
+
+      // ---- quoting a PDF from the filing ----
+      //
+      // A quoted document is a node holding a file id, a filename and the
+      // authorized download path. No bytes, no base64, no second table: the PDF
+      // already lives on the filing as an ApplicationFile, and the reader's
+      // browser fetches it through the tenant-scoped content route that the
+      // ledger's own download button uses.
+      console.log("\n  a section can quote a PDF from the filing");
+
+      const pdfDoc = {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Supporting evidence." }] },
+          {
+            type: "pdf",
+            attrs: {
+              fileId: "11111111-2222-4333-8444-555555555555",
+              filename: "audited-accounts.pdf",
+              url: "/api/applications/APP/files/11111111-2222-4333-8444-555555555555/content",
+            },
+          },
+        ],
+      };
+
+      // The bug this guards: `isBlankDoc` walked text and content only, so a
+      // section whose sole content was a PDF scored as empty and
+      // `ReportRichBlocks` discarded it on commit. A reviewer who cited a
+      // document and wrote no prose about it lost the citation with no error.
+      check(
+        "a section holding only a PDF is not treated as an abandoned draft",
+        !isBlankDoc({ type: "doc", content: [{ type: "pdf", attrs: { fileId: "x" } }] }),
+      );
+      check(
+        "a PDF alongside prose is still not blank",
+        !isBlankDoc(pdfDoc),
+      );
+      check(
+        "quoting a PDF does not make an otherwise blank section non-blank",
+        isBlankDoc({ type: "doc", content: [{ type: "paragraph", content: [] }] }),
+      );
+
+      // The picker offers documents and nothing else. Filtered by extension, so
+      // a browser that guessed octet-stream for a PDF does not drop it, and a
+      // Tableau workbook is not silently offered as a readable document.
+      const picker = pdfAttachments([
+        { id: "1", filename: "accounts.pdf", downloadUrl: "/a", downloadable: true },
+        { id: "2", filename: "ledger.xlsx", downloadUrl: "/b", downloadable: true },
+        { id: "3", filename: "warehouse.twb", downloadUrl: "/c", downloadable: true },
+        { id: "4", filename: "PIPELINE.PDF", downloadUrl: "/d", downloadable: false },
+        { id: "5", filename: "roster.csv", downloadUrl: "/e", downloadable: true },
+      ]);
+      check(
+        "the picker offers the filing's PDFs and nothing else",
+        picker.map((pdf) => pdf.filename).join(",") === "accounts.pdf,PIPELINE.PDF",
+        picker.map((pdf) => pdf.filename),
+      );
+      check(
+        "the picker keeps the server's own downloadable verdict",
+        picker.map((pdf) => pdf.downloadable).join(",") === "true,false",
+        picker.map((pdf) => pdf.downloadable),
+      );
+      check(
+        "a filing with no PDFs yields an empty picker rather than throwing",
+        pdfAttachments(undefined).length === 0 && pdfAttachments([]).length === 0,
+      );
+
+      // Round trip through the document the route stores. The node is opaque
+      // data — the route does not resolve it, which is exactly why a file id
+      // belonging to another tenant cannot leak: the reader's own request to the
+      // scoped content route is what decides, and that route 404s.
+      const withPdf = mergeRichTextBlocks(projection, [
+        { id: "Rich text 1", title: "Evidence", content: pdfDoc },
+      ]);
+      check(
+        "a quoted PDF survives a write and read of the document",
+        deepEqual(
+          resultDataToBlocks(withPdf).map((block) => block.content),
+          [pdfDoc],
+        ),
+        resultDataToBlocks(withPdf),
+      );
+      check(
+        "quoting a PDF leaves every projection key untouched",
+        Object.keys(projection).every((key) => deepEqual(withPdf[key], projection[key])),
+        Object.keys(projection).filter((key) => !deepEqual(withPdf[key], projection[key])),
+      );
+
+      // The permission the route enforces, and the same one the section gates
+      // its editor on. Driven over HTTP because the gate is server-side.
+      const storedReportId = serviceRow?.id;
+      const deniedEdit = await request(
+        associationCookie,
+        "PATCH",
+        `/api/reports/${storedReportId}`,
+        { resultData: added },
+      );
+      check(
+        "an association admin cannot edit a report (403)",
+        deniedEdit.status === 403,
+        deniedEdit.status,
+      );
+
+      const allowedEdit = await request(superCookie, "PATCH", `/api/reports/${storedReportId}`, {
+        resultData: added,
+        rawData: JSON.stringify(added, null, 2),
+      });
+      check(
+        "a super admin can write a narrative section through",
+        allowedEdit.status === 200,
+        `${allowedEdit.status} ${JSON.stringify(allowedEdit.body).slice(0, 160)}`,
+      );
+      const roundTripped = await prisma.report.findUniqueOrThrow({
+        where: { id: storedReportId! },
+        select: { resultData: true, rawData: true },
+      });
+      check(
+        "the stored document is what was sent, projection intact",
+        deepEqual(roundTripped.resultData, added),
+        Object.keys(roundTripped.resultData as Record<string, unknown>).filter(
+          (key) => !deepEqual((roundTripped.resultData as Record<string, unknown>)[key], added[key]),
+        ),
+      );
+      check(
+        "the raw document was kept in step with the tree",
+        deepEqual(JSON.parse(roundTripped.rawData), added),
+      );
+
+      // The same write, with a PDF quoted in the section. Driven over HTTP
+      // because what is at stake is that the route stores an arbitrary node it
+      // knows nothing about without rejecting it, mangling it, or dropping the
+      // projection around it.
+      const pdfWrite = await request(superCookie, "PATCH", `/api/reports/${storedReportId}`, {
+        resultData: withPdf,
+        rawData: JSON.stringify(withPdf, null, 2),
+      });
+      check(
+        "a report containing a quoted PDF is accepted",
+        pdfWrite.status === 200,
+        `${pdfWrite.status} ${JSON.stringify(pdfWrite.body).slice(0, 160)}`,
+      );
+      const pdfRead = await prisma.report.findUniqueOrThrow({
+        where: { id: storedReportId! },
+        select: { resultData: true, rawData: true },
+      });
+      check(
+        "the quoted PDF node is stored verbatim",
+        deepEqual(resultDataToBlocks(pdfRead.resultData as Record<string, unknown>), [
+          { id: "Rich text 1", title: "Evidence", content: pdfDoc },
+        ]),
+        resultDataToBlocks(pdfRead.resultData as Record<string, unknown>),
+      );
+      check(
+        "the raw document keeps the PDF node too, so the pharmacy receives it",
+        deepEqual(JSON.parse(pdfRead.rawData), withPdf),
+      );
+
+      // And the cross-tenant case, which is the whole reason the node holds an
+      // id rather than bytes. A `fileId` from another filing — hand-written into
+      // the document by anyone with edit access — resolves to nothing, because
+      // the browser's request goes through the same scoped content route the
+      // ledger uses. verify-authz covers that route's own refusals; this pins
+      // that the narrative offers no way around it.
+      const unknownFile = await request(
+        superCookie,
+        "GET",
+        `/api/applications/${serviceProbe.id}/files/11111111-2222-4333-8444-555555555555/content`,
+      );
+      check(
+        "a quoted file id the filing does not hold resolves to nothing",
+        unknownFile.status === 404,
+        unknownFile.status,
+      );
     } finally {
-      await prisma.application.delete({ where: { id: serviceProbe.id } });
+      await discard(prisma, serviceProbe.id);
     }
 
     // ---- who gets told about a report --------------------------------------
@@ -940,9 +1227,8 @@ async function main() {
     );
   } finally {
     // Reports cascade from the filing, and status events cascade too.
-    const cleaned = await prisma.application.deleteMany({ where: { id: probe.id } });
-    const remaining = await prisma.application.count();
-    console.log(`\n  cleaned up ${cleaned.count} probe filing(s); filings remaining: ${remaining}`);
+    await discard(prisma, probe.id);
+    console.log(`\n  filings remaining: ${await prisma.application.count()}`);
     await prisma.$disconnect();
   }
 

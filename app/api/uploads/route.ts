@@ -11,6 +11,7 @@ import {
   buildStorageKey,
   classify,
   maxUploadBytes,
+  mimeTypeFor,
   sanitiseFileName,
 } from "@/lib/uploads";
 import { canAttachToApplication } from "@/lib/upload-access";
@@ -77,9 +78,10 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   const driver = storageDriver();
   const key = buildStorageKey(originalName, user.id);
-  const mimeType =
-    parsed.data.mimeType ||
-    (kind === "csv" ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  // From the extension, not the browser's guess: browsers report nothing useful
+  // for most BI formats, and the previous fallback (`kind === "csv" ? csv : xlsx`)
+  // meant every attachment was stored and signed as a spreadsheet.
+  const mimeType = mimeTypeFor(originalName, kind, parsed.data.mimeType);
 
   const upload = await prisma.upload.create({
     data: {

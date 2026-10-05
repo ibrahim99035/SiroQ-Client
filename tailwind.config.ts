@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 import defaultTheme from "tailwindcss/defaultTheme";
 import animate from "tailwindcss-animate";
+import typography from "@tailwindcss/typography";
 
 const config: Config = {
   darkMode: ["class"],
@@ -61,9 +62,41 @@ const config: Config = {
       animation: {
         "timeline-pulse": "timeline-pulse 1.6s ease-in-out infinite",
       },
+      // `typography` supplies the `prose` scale that the TipTap report editor
+      // and its read-only renderer both ask for. Without it those class names
+      // are inert and rich text falls back to the browser's own defaults for
+      // headings, lists, quotes, code and tables.
+      //
+      // Left alone the plugin ships Tailwind's gray palette, which reads as a
+      // different product next to this one. Every colour is remapped onto a
+      // project token instead — expressed as `var(--token)` so the dark block
+      // in `globals.css` flips the rich text along with the rest of the
+      // interface, which literal hex values would not do. Mirrors `.prose-doc`.
+      typography: ({ theme }: { theme: (path: string) => string }) => ({
+        DEFAULT: {
+          css: {
+            "--tw-prose-body": theme("colors.muted"),
+            "--tw-prose-headings": theme("colors.ink"),
+            "--tw-prose-lead": theme("colors.muted"),
+            "--tw-prose-links": theme("colors.accent.DEFAULT"),
+            "--tw-prose-bold": theme("colors.ink"),
+            "--tw-prose-counters": theme("colors.accent.DEFAULT"),
+            "--tw-prose-bullets": theme("colors.accent.DEFAULT"),
+            "--tw-prose-hr": theme("colors.hairline"),
+            "--tw-prose-quotes": theme("colors.muted"),
+            "--tw-prose-quote-borders": theme("colors.hairline"),
+            "--tw-prose-captions": theme("colors.muted"),
+            "--tw-prose-code": theme("colors.ink"),
+            "--tw-prose-pre-code": theme("colors.ink"),
+            "--tw-prose-pre-bg": theme("colors.accent.soft"),
+            "--tw-prose-th-borders": theme("colors.hairline"),
+            "--tw-prose-td-borders": theme("colors.hairline"),
+          },
+        },
+      }),
     },
   },
-  plugins: [animate],
+  plugins: [animate, typography],
 };
 
 export default config;

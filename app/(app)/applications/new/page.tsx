@@ -33,7 +33,7 @@ import { fmtDate } from "@/lib/utils";
 const candidateSchema = z.object({
   fileName: z.string(),
   sizeBytes: z.number(),
-  kind: z.enum(["xlsx", "xls", "csv"]).nullable(),
+  kind: z.enum(["xlsx", "xls", "csv", "attachment"]).nullable(),
   state: z.enum(["valid", "warning", "invalid"]),
   reason: z.string(),
   rowCount: z.number(),
