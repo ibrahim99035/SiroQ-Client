@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
+import { splitCsvLine } from "@/lib/csv";
 import { ATTACHMENT_EXTENSIONS, contentTypeForName, OCTET_STREAM } from "@/lib/file-types";
 import type { FileKind } from "@/lib/types";
 
@@ -239,7 +240,7 @@ function inspectCsv(bytes: Buffer): IntakeReport {
   }
 
   const header = splitCsvLine(lines[0] ?? "");
-  const columns = header.map((value) => value.trim()).filter((value) => value.length > 0);
+  const columns = header.map((value: string) => value.trim()).filter((value: string) => value.length > 0);
   const rowCount = lines.length - 1;
   const columnCount = columns.length;
 
@@ -255,7 +256,7 @@ function inspectCsv(bytes: Buffer): IntakeReport {
   }
 
   const expected = ["NDC code", "Batch number"];
-  const missing = expected.filter((name) => !columns.some((c) => c.toLowerCase() === name.toLowerCase()));
+  const missing = expected.filter((name) => !columns.some((c: string) => c.toLowerCase() === name.toLowerCase()));
   if (missing.length > 0) {
     return {
       state: "invalid",
@@ -290,36 +291,4 @@ function inspectCsv(bytes: Buffer): IntakeReport {
   };
 }
 
-/** Minimal RFC 4180 splitter: handles quoted fields and escaped quotes. */
-function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (inQuotes) {
-      if (char === '"') {
-        if (line[i + 1] === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        current += char;
-      }
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = true;
-    } else if (char === ",") {
-      out.push(current);
-      current = "";
-    } else {
-      current += char;
-    }
-  }
-  out.push(current);
-  return out;
-}
+export { splitCsvLine } from "@/lib/csv";

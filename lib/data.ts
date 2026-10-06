@@ -502,6 +502,7 @@ async function stageFileForUpload(file: File): Promise<PendingUpload> {
     return { completeUrl: reserved.completeUrl };
   }
 
+  const { fileToBase64 } = await import("@/lib/upload-client");
   return {
     completeUrl: reserved.completeUrl,
     dataBase64: await fileToBase64(file),
@@ -525,22 +526,7 @@ async function completeStagedUpload(
   });
 }
 
-/**
- * `File` → base64, for the local driver only.
- *
- * `btoa` takes a binary string, and the usual `String.fromCharCode(...bytes)`
- * spread blows the argument limit on a file of any real size, so the bytes are
- * concatenated in chunks.
- */
-export async function fileToBase64(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const CHUNK = 0x8000;
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
-  }
-  return btoa(binary);
-}
+export { fileToBase64, stageFileForUpload, completeStagedUpload } from "@/lib/upload-client";
 
 /**
  * Creates a filing from bytes that are already in storage.
@@ -839,6 +825,7 @@ export async function replaceApplicationFile(
   file: File,
   _user: User,
 ): Promise<void> {
+  const { fileToBase64 } = await import("@/lib/upload-client");
   await apiSend(`/api/applications/${applicationId}/files/${fileId}`, "PATCH", {
     dataBase64: await fileToBase64(file),
     filename: file.name,

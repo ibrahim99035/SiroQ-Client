@@ -61,6 +61,9 @@ export const ATTACHMENT_EXTENSIONS = [
   ".json",
   ".sql",
   ".pdf",
+  ".html",
+  ".htm",
+  ".xhtml",
 ] as const;
 
 /** The kinds the analysis service is given. Everything else is evidence only. */
@@ -102,6 +105,9 @@ export const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   ".json": "application/json",
   ".sql": "application/sql",
   ".pdf": "application/pdf",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".xhtml": "application/xhtml+xml",
 };
 
 export const OCTET_STREAM = "application/octet-stream";
@@ -137,3 +143,5 @@ export function kindLabelForName(name: string): string {
 export function humanExtensionList(extensions: readonly string[]): string {
   return extensions.join(", ");
 }
+// Export for extractor
+export const EXTRACTOR_EXTENSIONS = [".pdf", ".html", ".htm", ".xhtml"] as const;

@@ -24,6 +24,7 @@
     "db:seed": "prisma db seed",
     "db:generate": "prisma generate",
     "db:reset": "prisma migrate reset --force",
+    "verify:extractor": "tsx scripts/verify-extractor.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },

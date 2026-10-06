@@ -24,6 +24,12 @@ yarn-error.log*
 # uploaded filing bytes (local storage driver)
 /data/storage/
 
+# session transcripts (may embed secrets from past runs)
+past_session.txt
+
+# playwright mcp session artifacts
+.playwright-mcp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

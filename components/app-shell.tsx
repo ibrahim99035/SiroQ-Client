@@ -9,6 +9,7 @@ import {
   Pill,
   ScrollText,
   Settings,
+  Table2,
   Upload,
   UserRoundCog,
   Users,
@@ -70,6 +71,9 @@ function useNavItems(user: User | null): NavItem[] {
     { label: "Applications", href: "/applications", icon: ScrollText, activePrefix: "/applications" },
     ...(canCreate
       ? [{ label: "New filing", href: "/applications/new", icon: Upload }]
+      : []),
+    ...(can(user, "useExtractor")
+      ? [{ label: "Extractor", href: "/extractor", icon: Table2 }]
       : []),
     ...(manageAssociations
       ? [{ label: "Associations", href: "/admin/associations", icon: Building2 }]
@@ -217,6 +221,7 @@ function topbarLabel(pathname: string): string {
   if (pathname === "/dashboard") return "Dashboard";
   if (pathname === "/applications") return "Applications";
   if (pathname === "/applications/new") return "New filing";
+  if (pathname === "/extractor") return "Extractor";
   if (pathname.startsWith("/applications/")) return "Filing record";
   if (pathname.startsWith("/admin/associations")) return "Administration · Associations";
   if (pathname.startsWith("/admin/pharmacies")) return "Administration · Pharmacies";

@@ -192,6 +192,7 @@ model User {
   reports        Report[]
   uploads        Upload[]             @relation("UploadOwner")
   analysisRuns   AnalysisRun[]
+  extractionRuns ExtractionRun[] @relation("ExtractionRequester")
   invitedBy      User?                @relation("UserInviter", fields: [invitedById], references: [id], onDelete: SetNull)
   invitedById    String?              @map("invited_by_id") @db.Uuid
   invitedUsers   User[]               @relation("UserInviter")
@@ -483,4 +484,61 @@ model AnalysisRun {
   @@index([applicationId, startedAt])
   @@index([status])
   @@map("analysis_runs")
+}
+
+enum ExtractionRunStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
+enum ExtractionSource {
+  upload
+  url
+}
+
+enum ExtractionErrorCode {
+  NONE
+  NO_TABLE_FOUND
+  INPUT_UNREADABLE
+  UPSTREAM_QUOTA
+  UPSTREAM_UNAVAILABLE
+  UPSTREAM_REFUSED
+  BLOCKED_BY_SAFETY
+  OUTPUT_TRUNCATED
+  TOO_LARGE
+}
+
+model ExtractionRun {
+  id                 String              @id @default(uuid()) @db.Uuid
+  status             ExtractionRunStatus @default(queued)
+  source             ExtractionSource
+  sourceName         String              @map("source_name")
+  sourceUrl          String?             @map("source_url")
+  sourceMime         String              @map("source_mime")
+  sourceBytes        Int                 @map("source_bytes")
+  sourceChecksum     String?             @map("source_checksum")
+  uploadId           String?             @map("upload_id") @db.Uuid
+  keySlot            Int?                @map("key_slot")
+  attempts           Int                 @default(0)
+  model              String
+  finishReason       String?             @map("finish_reason")
+  tableCount         Int                 @default(0) @map("table_count")
+  tables             Json                @default("[]")
+  csvBytes           Int?                @map("csv_bytes")
+  csvTruncated       Boolean             @default(false) @map("csv_truncated")
+  outputKey          String?             @map("output_key")
+  outputName         String?             @map("output_name")
+  errorCode          ExtractionErrorCode @default(NONE) @map("error_code")
+  errorMessage       String?             @map("error_message")
+  startedAt          DateTime            @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime?           @map("completed_at") @db.Timestamptz(6)
+  requestedById      String              @map("requested_by_id") @db.Uuid
+  requestedBy        User                @relation("ExtractionRequester", fields: [requestedById], references: [id])
+
+  @@index([status])
+  @@index([requestedById, startedAt])
+  @@index([uploadId])
+  @@map("extraction_runs")
 }

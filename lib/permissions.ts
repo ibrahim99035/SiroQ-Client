@@ -36,7 +36,8 @@ export type PermissionAction =
   | "updateApplicationStatus"
   | "manageUsers"
   | "manageAssociations"
-  | "managePharmacies";
+  | "managePharmacies"
+  | "useExtractor";
 
 export interface PermissionResource {
   /** For association-scoped resources: which association owns the resource. */
@@ -73,8 +74,8 @@ export function can(
     case "super_admin":
       return true;
 
-    case "moderator":
-      return action === "viewAllData";
+case "moderator":
+      return action === "viewAllData" || action === "useExtractor";
 
     case "pharmacy_association_admin":
       switch (action) {
@@ -175,5 +176,9 @@ function actionDescribe(action: PermissionAction): string {
       return "manage associations";
     case "managePharmacies":
       return "manage pharmacies";
+    case "useExtractor":
+      return "extract tables from documents";
+    default:
+      return `perform ${action}`;
   }
 }
