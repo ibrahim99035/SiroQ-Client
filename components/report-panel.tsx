@@ -74,6 +74,8 @@ const METADATA_KEYS = [
   "Files failing a quality check",
 ] as const;
 
+const BIG_REVELATIONS_KEY = "Big revelations";
+
 /**
  * Never rendered as a visible row.
  *
@@ -86,6 +88,7 @@ const SUPPRESSED_KEYS = new Set(["Application ID", "Analysis ID"]);
 
 const FILES_KEY = "Files";
 const EVIDENCE_KEY = "Evidence gaps";
+const BIG_REVELATIONS_KEYS = ["Big revelations", "big_revelations"];
 
 /** The document's declared schema version, if it declares one. */
 function readSchemaVersion(data: ReportResultData): string | null {
@@ -139,6 +142,14 @@ export function ReportPanel({ report }: { report: Report }) {
   const schemaVersion = readSchemaVersion(resultData);
   const schemaMismatch = schemaVersion !== null && schemaVersion !== KNOWN_SCHEMA_VERSION;
 
+  let bigRevelations: ReportNode | undefined;
+  for (const k of BIG_REVELATIONS_KEYS) {
+    if (resultData[k] !== undefined) {
+      bigRevelations = resultData[k]!;
+      break;
+    }
+  }
+
   const kpis = KPI_KEYS.filter((key) => resultData[key] !== undefined);
   const metadata = METADATA_KEYS.filter((key) => resultData[key] !== undefined);
   const files = resultData[FILES_KEY];
@@ -148,6 +159,7 @@ export function ReportPanel({ report }: { report: Report }) {
       !SUPPRESSED_KEYS.has(key) &&
       key !== FILES_KEY &&
       key !== EVIDENCE_KEY &&
+      BIG_REVELATIONS_KEYS.every((brk) => brk !== key) &&
       key !== "Schema version" &&
       // `$rich` nodes are the reporter's narrative, and they have their own
       // section above the analysis. Listing them here as well printed every
@@ -161,6 +173,7 @@ export function ReportPanel({ report }: { report: Report }) {
     kpis.length === 0 &&
     metadata.length === 0 &&
     extras.length === 0 &&
+    bigRevelations === undefined &&
     files === undefined &&
     evidence === undefined;
 
@@ -245,9 +258,9 @@ export function ReportPanel({ report }: { report: Report }) {
                   const tone = key === "Data quality score" ? qualityTone(scalarText(resultData[key])) : null;
                   return (
                     <div key={key} className="card px-3.5 py-2.5">
-                      <p className="text-[11px] leading-tight text-muted">{key}</p>
+                      <p className="font-mono text-[11px] text-muted">{key}</p>
                       <p
-                        className={`mt-1 font-mono text-[19px] leading-none tabular-nums ${
+                        className={`mt-0.5 font-mono text-lg leading-tight ${
                           tone ? TONE_CLASS[tone] : "text-ink"
                         }`}
                       >
@@ -262,6 +275,12 @@ export function ReportPanel({ report }: { report: Report }) {
                 signal={resultData["Highest signal"]}
               />
             </section>
+          ) : null}
+
+          {bigRevelations !== undefined ? (
+            <ReportSection title="Big revelations">
+              <ReportRow label="Big revelations" value={bigRevelations} depth={0} />
+            </ReportSection>
           ) : null}
 
           {metadata.length > 0 ? (
